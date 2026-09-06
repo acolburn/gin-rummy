@@ -1,43 +1,49 @@
-# Svelte + Vite
+TODO
 
-This template should help get you started developing with Svelte in Vite.
+- If hand reaches end of deck, nothing happens
 
-## Recommended IDE Setup
+Updated todo list
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+Read , lines 1 to 200
 
-## Need an official Svelte framework?
+No — it's not "move everything in `<script>` into a `.js` file." It's splitting the script into two different kinds of code that currently live together:
 
-Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
+## Stays in `App.svelte` (Svelte-specific / UI glue)
 
-## Technical considerations
+- The `$state()` and `$effect()` declarations themselves
+- DOM-related things: `knockModalRef`, `showModal()`/`close()`, drag-and-drop handlers (`handleDndConsider`/`handleDndFinalize`), `isDragging`
+- Anything that exists only because of _how the UI is built_ — event handlers wired to buttons, the modal open/close effect, etc.
 
-**Why use this over SvelteKit?**
+## Moves to a plain `game.js` (game rules / data logic)
 
-- It brings its own routing solution which might not be preferable for some users.
-- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
+Functions that take state in and return new state out, with no knowledge of Svelte or the DOM:
 
-This template contains as little as possible to get started with Vite + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
+- `makeDeck`, `newHand`, `drawCard`, `addCardToHandFromDeck`, `addCardToHandFromDiscardPile`, `discardCard`, `switchPlayer`
 
-Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
-
-**Why include `.vscode/extensions.json`?**
-
-Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
-
-**Why enable `checkJs` in the JS template?**
-
-It is likely that most cases of changing variable types in runtime are likely to be accidental, rather than deliberate. This provides advanced typechecking out of the box. Should you like to take advantage of the dynamically-typed nature of JavaScript, it is trivial to change the configuration.
-
-**Why is HMR not preserving my local component state?**
-
-HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/sveltejs/svelte-hmr/tree/master/packages/svelte-hmr#preservation-of-local-state).
-
-If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
+For example, `discardCard` today directly mutates `gameState.playerHand = ...`. In `game.js` it would instead look like:
 
 ```js
-// store.js
-// An extremely simple external store
-import { writable } from 'svelte/store'
-export default writable(0)
+// game.js
+export function discardCard(gameState, card) {
+  // same validation + filtering logic, but working on a plain object
+  // returns updated state instead of assuming $state exists
+}
 ```
+
+`App.svelte` would then just call it and assign the result:
+
+```js
+function handleDiscard(card) {
+  gameState = discardCard(gameState, card); // still triggers Svelte reactivity
+}
+```
+
+## Why split it this way
+
+The `fetch` calls to the Deck of Cards API and the win/discard/knock rules have nothing to do with Svelte — they're just data transformations. Keeping them in a plain module means:
+
+- You can unit-test them without spinning up a component.
+- When you swap local state for Firestore later, you change _what calls these functions and where the result gets stored_ (a Firestore write/listener instead of a local variable), not the rules themselves.
+- `App.svelte`'s `<script>` shrinks down to state declarations + thin wrapper functions that call into `game.js` and handle UI-only concerns (modal, drag state).
+
+So it's a logic/UI split, not a "cut the whole script tag and paste it" move. I haven't made this change yet — let me know if you'd like me to do the extraction now.
