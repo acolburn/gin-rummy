@@ -11,7 +11,7 @@
     if (card) {
       return card.image;
     }
-    return findCardByCode("BK").image; // Return the image for the back of the card if not found
+    return findCardByCode("BK")?.image; // Return the image for the back of the card if not found
   }
 </script>
 
