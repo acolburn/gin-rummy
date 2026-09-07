@@ -2,6 +2,7 @@
   import { dndzone } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
   import Card from "./Card.svelte";
+  import app from "./firebase.js";
   import { toHandCard } from "./cards.js";
   import { calculateDeadwood } from "./HandEvaluation.svelte";
   // Holds all the shared game data in one place, e.g., this can be synced
