@@ -4,7 +4,7 @@ TODO
 
 Updated todo list
 
-Read , lines 1 to 200
+NOTES FROM AI RE: PREP FOR FIRESTORE
 
 No — it's not "move everything in `<script>` into a `.js` file." It's splitting the script into two different kinds of code that currently live together:
 
