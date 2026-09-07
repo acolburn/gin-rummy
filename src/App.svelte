@@ -34,12 +34,26 @@
   const flipDurationMs = 200; // Duration of the flip animation in milliseconds
   let isDragging = $state(false); // Track whether a card is being dragged
 
+  // current player can drag and drop cards in their hand
   function handleDndConsider(event) {
     isDragging = true; //player started dragging a card, so ignore the click event that will fire when they release the card
     gameState.playerHand = event.detail.items;
   }
   function handleDndFinalize(event) {
     gameState.playerHand = event.detail.items;
+
+    setTimeout(() => {
+      isDragging = false; // Brief delay before restting to the click event finishes getting ignored
+    }, 50);
+  }
+
+  // opponent player can drag and drop cards in their hand
+  function handleOpponentDndConsider(event) {
+    isDragging = true; //opponent started dragging a card, so ignore the click event that will fire when they release the card
+    gameState.opponentHand = event.detail.items;
+  }
+  function handleOpponentDndFinalize(event) {
+    gameState.opponentHand = event.detail.items;
 
     setTimeout(() => {
       isDragging = false; // Brief delay before restting to the click event finishes getting ignored
@@ -193,7 +207,16 @@
     if (isDragging) {
       return;
     }
-    // Remove the card from the player's hand
+    // Only allow discarding a card from the hand whose turn it actually is,
+    // regardless of which hand the click event happened to come from
+    const isFromCurrentPlayerHand =
+      gameState.currentPlayer === "player"
+        ? gameState.playerHand.some((c) => c.id === card.id)
+        : gameState.opponentHand.some((c) => c.id === card.id);
+    if (!isFromCurrentPlayerHand) {
+      return;
+    }
+    // Remove the card from the current player's hand
     if (gameState.currentPlayer === "player") {
       gameState.playerHand = gameState.playerHand.filter(
         (c) => c.id !== card.id,
@@ -220,9 +243,16 @@
 </script>
 
 <!-- Display opponent hand -->
-<div class="hand">
+<div
+  class="hand"
+  use:dndzone={{ items: gameState.opponentHand, flipDurationMs }}
+  onconsider={handleOpponentDndConsider}
+  onfinalize={handleOpponentDndFinalize}
+>
   {#each gameState.opponentHand as card (card.id)}
-    <Card code={card.code} onCardClick={() => discardCard(card)} />
+    <div animate:flip={{ duration: flipDurationMs }}>
+      <Card code={card.code} onCardClick={() => discardCard(card)} />
+    </div>
   {/each}
 </div>
 <!-- End Display opponent hand -->
