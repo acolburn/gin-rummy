@@ -2,24 +2,61 @@
   import { dndzone } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
   import Card from "./Card.svelte";
-  import { auth } from "./firebase.js";
+  import { auth, db } from "./firebase.js";
   import { onMount } from "svelte";
   import { signInAnonymously } from "firebase/auth";
+  import { doc, setDoc, onSnapshot } from "firebase/firestore";
   import { toHandCard } from "./cards.js";
   import { calculateDeadwood } from "./HandEvaluation.svelte";
 
+  let user = $state();
+  let room = $state();
+
   // onMount means runs this after the component is loaded in the browser/DOM
   // We want user to be anonymously signed in when the component is loaded
-  onMount(() => {
-    signInAnonymously(auth)
-      .then((result) => {
-        console.log("Firebase login successful!");
-        console.log("My Firebase user ID:", result.user.uid);
-      })
-      .catch((error) => {
-        console.error("Firebase login failed:", error);
+  onMount(async () => {
+    try {
+      // Log in anonymously
+      const result = await signInAnonymously(auth);
+      user = result.user;
+
+      console.log("Firebase login successful!");
+      console.log("My Firebase user ID:", user.uid);
+
+      // Listen for changes to our test game room
+      const roomRef = doc(db, "games", "gin-rummy-test");
+
+      onSnapshot(roomRef, (snapshot) => {
+        if (snapshot.exists()) {
+          room = snapshot.data();
+
+          console.log("Game room changed!");
+          console.log("Current room data:", room);
+        }
       });
+    } catch (error) {
+      console.error("Firebase error:", error);
+    }
   });
+
+  async function createTestRoom() {
+    if (!user) {
+      console.log("Not logged in yet");
+      return;
+    }
+
+    try {
+      await setDoc(doc(db, "games", "gin-rummy-test"), {
+        gameType: "gin-rummy",
+        player1: user.uid,
+        status: "waiting",
+      });
+
+      console.log("Gin Rummy room created!");
+    } catch (error) {
+      console.error("Could not create room:", error);
+    }
+  }
 
   // Holds all the shared game data in one place, e.g., this can be synced
   // with a shared game state, such as via Firestore, later on
@@ -342,6 +379,17 @@
   {gameState.currentPlayer === "player" ? "Your turn" : "Waiting for opponent"}
 </p>
 <!-- End Display new game button and status line-->
+<button onclick={createTestRoom}> Create Gin Rummy Test Room </button>
+
+{#if room}
+  <h2>Online Game</h2>
+
+  <p>Game: {room.gameType}</p>
+  <p>Status: {room.status}</p>
+  <p>Player 1: {room.player1}</p>
+{:else}
+  <p>Waiting for game information...</p>
+{/if}
 
 <!-- ---------------------------------------------------------------------------- -->
 <!-- Knock/Gin modal -->
