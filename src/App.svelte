@@ -2,9 +2,25 @@
   import { dndzone } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
   import Card from "./Card.svelte";
-  import app from "./firebase.js";
+  import { auth } from "./firebase.js";
+  import { onMount } from "svelte";
+  import { signInAnonymously } from "firebase/auth";
   import { toHandCard } from "./cards.js";
   import { calculateDeadwood } from "./HandEvaluation.svelte";
+
+  // onMount means runs this after the component is loaded in the browser/DOM
+  // We want user to be anonymously signed in when the component is loaded
+  onMount(() => {
+    signInAnonymously(auth)
+      .then((result) => {
+        console.log("Firebase login successful!");
+        console.log("My Firebase user ID:", result.user.uid);
+      })
+      .catch((error) => {
+        console.error("Firebase login failed:", error);
+      });
+  });
+
   // Holds all the shared game data in one place, e.g., this can be synced
   // with a shared game state, such as via Firestore, later on
   let gameState = $state({
