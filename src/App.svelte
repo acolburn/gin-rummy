@@ -5,33 +5,46 @@
   import { auth, db } from "./firebase.js";
   import { onMount } from "svelte";
   import { signInAnonymously } from "firebase/auth";
-  import { doc, setDoc, onSnapshot } from "firebase/firestore";
+  import { doc, onSnapshot, runTransaction } from "firebase/firestore";
   import { toHandCard } from "./cards.js";
   import { calculateDeadwood } from "./HandEvaluation.svelte";
 
   let user = $state();
-  let room = $state();
+  let game = $state();
+  let playerNumber = $state();
 
   // onMount means runs this after the component is loaded in the browser/DOM
   // We want user to be anonymously signed in when the component is loaded
   onMount(async () => {
     try {
-      // Log in anonymously
       const result = await signInAnonymously(auth);
       user = result.user;
 
       console.log("Firebase login successful!");
       console.log("My Firebase user ID:", user.uid);
 
-      // Listen for changes to our test game room
-      const roomRef = doc(db, "games", "gin-rummy-test");
+      await joinGame();
 
-      onSnapshot(roomRef, (snapshot) => {
+      const gameRef = doc(db, "games", "current-game");
+
+      onSnapshot(gameRef, (snapshot) => {
         if (snapshot.exists()) {
-          room = snapshot.data();
+          game = snapshot.data();
 
-          console.log("Game room changed!");
-          console.log("Current room data:", room);
+          if (game.player1 === user.uid) {
+            playerNumber = 1;
+          } else if (game.player2 === user.uid) {
+            playerNumber = 2;
+          } else {
+            playerNumber = undefined;
+          }
+
+          console.log("Game changed!");
+          console.log("Current game:", game);
+          console.log("I am player: ", playerNumber);
+        } else {
+          console.log("There is no current game.");
+          game = undefined;
         }
       });
     } catch (error) {
@@ -39,22 +52,62 @@
     }
   });
 
-  async function createTestRoom() {
+  async function joinGame() {
     if (!user) {
-      console.log("Not logged in yet");
+      console.log("No Firebase user yet.");
       return;
     }
 
-    try {
-      await setDoc(doc(db, "games", "gin-rummy-test"), {
-        gameType: "gin-rummy",
-        player1: user.uid,
-        status: "waiting",
-      });
+    const gameRef = doc(db, "games", "current-game");
 
-      console.log("Gin Rummy room created!");
+    try {
+      await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(gameRef);
+
+        if (!snapshot.exists()) {
+          console.log("No game exists yet.");
+          return;
+        }
+
+        const currentGame = snapshot.data();
+
+        // Am I already Player 1?
+        if (currentGame.player1 === user.uid) {
+          console.log("You are already Player 1.");
+          return;
+        }
+
+        // Am I already Player 2?
+        if (currentGame.player2 === user.uid) {
+          console.log("You are already Player 2.");
+          return;
+        }
+
+        // Player 1 is available
+        if (!currentGame.player1) {
+          transaction.update(gameRef, {
+            player1: user.uid,
+          });
+
+          console.log("You are Player 1.");
+          return;
+        }
+
+        // Player 2 is available
+        if (!currentGame.player2) {
+          transaction.update(gameRef, {
+            player2: user.uid,
+          });
+
+          console.log("You are Player 2.");
+          return;
+        }
+
+        // Both positions are occupied
+        console.log("The game already has two players.");
+      });
     } catch (error) {
-      console.error("Could not create room:", error);
+      console.error("Could not join game:", error);
     }
   }
 
@@ -379,16 +432,20 @@
   {gameState.currentPlayer === "player" ? "Your turn" : "Waiting for opponent"}
 </p>
 <!-- End Display new game button and status line-->
-<button onclick={createTestRoom}> Create Gin Rummy Test Room </button>
 
-{#if room}
-  <h2>Online Game</h2>
+{#if game}
+  <h2>Current Gin Rummy Game</h2>
 
-  <p>Game: {room.gameType}</p>
-  <p>Status: {room.status}</p>
-  <p>Player 1: {room.player1}</p>
+  <p>Game type: {game.gameType}</p>
+  <p>Status: {game.status}</p>
+  <p>Player 1: {game.player1 ?? "Waiting..."}</p>
+  <p>Player 2: {game.player2 ?? "Waiting..."}</p>
+
+  <hr />
+
+  <p>Your Firebase ID: {user?.uid}</p>
 {:else}
-  <p>Waiting for game information...</p>
+  <p>No game is currently running.</p>
 {/if}
 
 <!-- ---------------------------------------------------------------------------- -->
