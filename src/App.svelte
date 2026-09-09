@@ -18,6 +18,13 @@
   let gameSnapshotData = $state();
   let playerNumber = $state();
 
+  const HEARTBEAT_INTERVAL_MS = 15000; // how often we mark our seat as still occupied
+  const STALE_THRESHOLD_MS = 45000; // seat counts as abandoned if not refreshed in this long
+
+  function isSeatStale(lastSeen) {
+    return !lastSeen || Date.now() - lastSeen > STALE_THRESHOLD_MS;
+  }
+
   function doNothing() {
     // This function intentionally does nothing
   }
@@ -33,6 +40,11 @@
       console.log("My Firebase user ID:", user.uid);
 
       await joinGame();
+
+      // Best-effort: free our seat if the tab is closing. Not guaranteed to run
+      // (crashes/force-quits won't fire this), which is why we also have the
+      // heartbeat/staleness check below as the reliable fallback.
+      window.addEventListener("pagehide", leaveGame);
 
       const gameRef = doc(db, "games", "gin-rummy");
 
@@ -102,20 +114,22 @@
           return;
         }
 
-        // Player 1 is available
-        if (!currentGame.player1) {
+        // Player 1 is available (empty, or abandoned by a stale session)
+        if (!currentGame.player1 || isSeatStale(currentGame.player1LastSeen)) {
           transaction.update(gameRef, {
             player1: user.uid,
+            player1LastSeen: Date.now(),
           });
 
           console.log("You are Player 1.");
           return;
         }
 
-        // Player 2 is available
-        if (!currentGame.player2) {
+        // Player 2 is available (empty, or abandoned by a stale session)
+        if (!currentGame.player2 || isSeatStale(currentGame.player2LastSeen)) {
           transaction.update(gameRef, {
             player2: user.uid,
+            player2LastSeen: Date.now(),
           });
 
           console.log("You are Player 2.");
@@ -150,13 +164,13 @@
         const currentGame = snapshot.data();
 
         if (currentGame.player1 === user.uid) {
-          transaction.update(gameRef, { player1: null });
+          transaction.update(gameRef, { player1: null, player1LastSeen: null });
           console.log("You left as Player 1.");
           return;
         }
 
         if (currentGame.player2 === user.uid) {
-          transaction.update(gameRef, { player2: null });
+          transaction.update(gameRef, { player2: null, player2LastSeen: null });
           console.log("You left as Player 2.");
           return;
         }
@@ -179,6 +193,24 @@
       console.error("Could not sync game state:", error);
     }
   }
+
+  // Periodically refresh our seat's timestamp so other sessions know we're
+  // still here. If this stops updating (tab closed, crashed, lost network),
+  // joinGame() will treat our seat as abandoned after STALE_THRESHOLD_MS.
+  $effect(() => {
+    if (playerNumber !== 1 && playerNumber !== 2) {
+      return;
+    }
+
+    const gameRef = doc(db, "games", "gin-rummy");
+    const field = playerNumber === 1 ? "player1LastSeen" : "player2LastSeen";
+    const sendHeartbeat = () =>
+      updateDoc(gameRef, { [field]: Date.now() }).catch(() => {});
+
+    sendHeartbeat();
+    const intervalId = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  });
 
   // Holds all the shared game data in one place, e.g., this can be synced
   // with a shared game state, such as via Firestore, later on
