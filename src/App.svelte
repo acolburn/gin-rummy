@@ -5,46 +5,36 @@
   import { auth, db } from "./firebase.js";
   import { onMount } from "svelte";
   import { signInAnonymously } from "firebase/auth";
-  import {
-    doc,
-    onSnapshot,
-    runTransaction,
-    updateDoc,
-  } from "firebase/firestore";
+  import { doc, onSnapshot, updateDoc } from "firebase/firestore";
   import { toHandCard } from "./cards.js";
   import { calculateDeadwood } from "./HandEvaluation.svelte";
 
-  let user = $state();
   let gameSnapshotData = $state();
   let playerNumber = $state();
 
-  const HEARTBEAT_INTERVAL_MS = 15000; // how often we mark our seat as still occupied
-  const STALE_THRESHOLD_MS = 45000; // seat counts as abandoned if not refreshed in this long
-
-  function isSeatStale(lastSeen) {
-    return !lastSeen || Date.now() - lastSeen > STALE_THRESHOLD_MS;
+  // Identify this browser with a simple random id stored locally, instead of
+  // relying on Firebase Auth's uid (which was the source of the occasional
+  // "stuck as spectator" bugs).
+  function getOrCreateMyId() {
+    const storageKey = "ginRummyPlayerId";
+    let id = localStorage.getItem(storageKey);
+    if (!id) {
+      id = Math.random().toString(36).slice(2);
+      localStorage.setItem(storageKey, id);
+    }
+    return id;
   }
+  const myId = getOrCreateMyId();
 
   function doNothing() {
     // This function intentionally does nothing
   }
 
   // onMount means runs this after the component is loaded in the browser/DOM
-  // We want user to be anonymously signed in when the component is loaded
+  // Firebase still needs an authenticated (anonymous) user for Firestore access
   onMount(async () => {
     try {
-      const result = await signInAnonymously(auth);
-      user = result.user;
-
-      console.log("Firebase login successful!");
-      console.log("My Firebase user ID:", user.uid);
-
-      await joinGame();
-
-      // Best-effort: free our seat if the tab is closing. Not guaranteed to run
-      // (crashes/force-quits won't fire this), which is why we also have the
-      // heartbeat/staleness check below as the reliable fallback.
-      window.addEventListener("pagehide", leaveGame);
+      await signInAnonymously(auth);
 
       const gameRef = doc(db, "games", "gin-rummy");
 
@@ -62,17 +52,13 @@
             }
           });
 
-          if (gameSnapshotData.player1 === user.uid) {
+          if (gameSnapshotData.player1 === myId) {
             playerNumber = 1;
-          } else if (gameSnapshotData.player2 === user.uid) {
+          } else if (gameSnapshotData.player2 === myId) {
             playerNumber = 2;
           } else {
             playerNumber = undefined;
           }
-
-          console.log("Game changed!");
-          console.log("Current game:", gameSnapshotData);
-          console.log("I am player: ", playerNumber);
         } else {
           console.log("There is no current game.");
           gameSnapshotData = undefined;
@@ -83,102 +69,17 @@
     }
   });
 
-  async function joinGame() {
-    if (!user) {
-      console.log("No Firebase user yet.");
-      return;
-    }
-
+  // Claim the Dealer (player1) or Non-Dealer (player2) seat by writing our id to
+  // Firestore. This is a friendly game, so we don't check who currently holds
+  // the seat -- clicking always (re)assigns it to you.
+  async function claimSeat(seatNumber) {
+    const field = seatNumber === 1 ? "player1" : "player2";
     const gameRef = doc(db, "games", "gin-rummy");
 
     try {
-      await runTransaction(db, async (transaction) => {
-        const snapshot = await transaction.get(gameRef);
-
-        if (!snapshot.exists()) {
-          console.log("No game exists yet.");
-          return;
-        }
-
-        const currentGame = snapshot.data();
-
-        // Am I already Player 1?
-        if (currentGame.player1 === user.uid) {
-          console.log("You are already Player 1.");
-          return;
-        }
-
-        // Am I already Player 2?
-        if (currentGame.player2 === user.uid) {
-          console.log("You are already Player 2.");
-          return;
-        }
-
-        // Player 1 is available (empty, or abandoned by a stale session)
-        if (!currentGame.player1 || isSeatStale(currentGame.player1LastSeen)) {
-          transaction.update(gameRef, {
-            player1: user.uid,
-            player1LastSeen: Date.now(),
-          });
-
-          console.log("You are Player 1.");
-          return;
-        }
-
-        // Player 2 is available (empty, or abandoned by a stale session)
-        if (!currentGame.player2 || isSeatStale(currentGame.player2LastSeen)) {
-          transaction.update(gameRef, {
-            player2: user.uid,
-            player2LastSeen: Date.now(),
-          });
-
-          console.log("You are Player 2.");
-          return;
-        }
-
-        // Both positions are occupied
-        console.log("The game already has two players.");
-      });
+      await updateDoc(gameRef, { [field]: myId });
     } catch (error) {
-      console.error("Could not join game:", error);
-    }
-  }
-
-  async function leaveGame() {
-    if (!user) {
-      console.log("No Firebase user yet.");
-      return;
-    }
-
-    const gameRef = doc(db, "games", "gin-rummy");
-
-    try {
-      await runTransaction(db, async (transaction) => {
-        const snapshot = await transaction.get(gameRef);
-
-        if (!snapshot.exists()) {
-          console.log("No game exists yet.");
-          return;
-        }
-
-        const currentGame = snapshot.data();
-
-        if (currentGame.player1 === user.uid) {
-          transaction.update(gameRef, { player1: null, player1LastSeen: null });
-          console.log("You left as Player 1.");
-          return;
-        }
-
-        if (currentGame.player2 === user.uid) {
-          transaction.update(gameRef, { player2: null, player2LastSeen: null });
-          console.log("You left as Player 2.");
-          return;
-        }
-
-        console.log("You are not in this game.");
-      });
-    } catch (error) {
-      console.error("Could not leave game:", error);
+      console.error("Could not claim seat:", error);
     }
   }
 
@@ -193,24 +94,6 @@
       console.error("Could not sync game state:", error);
     }
   }
-
-  // Periodically refresh our seat's timestamp so other sessions know we're
-  // still here. If this stops updating (tab closed, crashed, lost network),
-  // joinGame() will treat our seat as abandoned after STALE_THRESHOLD_MS.
-  $effect(() => {
-    if (playerNumber !== 1 && playerNumber !== 2) {
-      return;
-    }
-
-    const gameRef = doc(db, "games", "gin-rummy");
-    const field = playerNumber === 1 ? "player1LastSeen" : "player2LastSeen";
-    const sendHeartbeat = () =>
-      updateDoc(gameRef, { [field]: Date.now() }).catch(() => {});
-
-    sendHeartbeat();
-    const intervalId = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
-    return () => clearInterval(intervalId);
-  });
 
   // Holds all the shared game data in one place, e.g., this can be synced
   // with a shared game state, such as via Firestore, later on
@@ -478,8 +361,7 @@
     <h1>Gin Rummy</h1>
     <p class="status">
       {#if playerNumber === undefined}
-        <span class="status-dot red"></span>Spectating (both player seats are
-        taken)
+        <span class="status-dot red"></span>Choose a seat to play
       {:else if gameState.currentPlayer === "player1" && playerNumber === 1}
         <span class="status-dot green"></span>Your turn
       {:else if gameState.currentPlayer === "player2" && playerNumber === 2}
@@ -488,9 +370,12 @@
         <span class="status-dot red"></span>Waiting for opponent
       {/if}
     </p>
-    {#if playerNumber !== undefined}
-      <button class="btn-continue" onclick={leaveGame}>Leave Seat</button>
-    {/if}
+    <div class="seat-buttons">
+      <button class="btn-continue" onclick={() => claimSeat(1)}
+        >Non-Dealer</button
+      >
+      <button class="btn-continue" onclick={() => claimSeat(2)}>Dealer</button>
+    </div>
   </header>
 
   <!-- Display opponent hand -->
@@ -834,6 +719,11 @@
   .btn-continue {
     background: linear-gradient(180deg, #7fb8e0, #3a7fb5);
     color: #04202f;
+  }
+
+  .seat-buttons {
+    display: flex;
+    gap: 0.5rem;
   }
 
   .knock-modal {
