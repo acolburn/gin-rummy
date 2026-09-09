@@ -69,9 +69,9 @@
     }
   });
 
-  // Claim the Dealer (player1) or Non-Dealer (player2) seat by writing our id to
+  // Claim the Dealer (player2) or Non-Dealer (player1) seat by writing our id to
   // Firestore. This is a friendly game, so we don't check who currently holds
-  // the seat -- clicking always (re)assigns it to you.
+  // the seat -- clicking always (re)assigns it.
   async function claimSeat(seatNumber) {
     const field = seatNumber === 1 ? "player1" : "player2";
     const gameRef = doc(db, "games", "gin-rummy");
@@ -496,8 +496,13 @@
     <span class="hand-label">Player 1</span>
 
     <!-- Display new game button -->
+    <!-- Only Dealer can shuffle and deal a new hand -->
     <div class="controls">
-      <button class="btn-primary" onclick={newHand}>New Hand</button>
+      <button
+        class="btn-primary"
+        disabled={playerNumber !== 2}
+        onclick={newHand}>New Hand</button
+      >
     </div>
     <!-- End Display new game button -->
   </section>
