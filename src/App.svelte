@@ -445,7 +445,10 @@
   <header class="topbar">
     <h1>Gin Rummy</h1>
     <p class="status">
-      {#if gameState.currentPlayer === "player1" && playerNumber === 1}
+      {#if playerNumber === undefined}
+        <span class="status-dot red"></span>Spectating (both player seats are
+        taken)
+      {:else if gameState.currentPlayer === "player1" && playerNumber === 1}
         <span class="status-dot green"></span>Your turn
       {:else if gameState.currentPlayer === "player2" && playerNumber === 2}
         <span class="status-dot green"></span>Your turn
@@ -453,6 +456,9 @@
         <span class="status-dot red"></span>Waiting for opponent
       {/if}
     </p>
+    {#if playerNumber !== undefined}
+      <button class="btn-continue" onclick={leaveGame}>Leave Seat</button>
+    {/if}
   </header>
 
   <!-- Display opponent hand -->
@@ -580,27 +586,6 @@
   </section>
   <!-- End Display player hand -->
 </div>
-
-<!-- {#if gameSnapshotData}
-  <h2>Current Gin Rummy Game</h2>
-
-  <p>Game type: {gameSnapshotData.gameType}</p>
-  <p>Status: {gameSnapshotData.status}</p>
-  <p>Player 1: {gameSnapshotData.player1 ?? "Waiting..."}</p>
-  <p>Player 2: {gameSnapshotData.player2 ?? "Waiting..."}</p>
-
-  {#if playerNumber === undefined}
-    <p>You're not part of the current game (spectator mode).</p>
-  {:else}
-    <button onclick={leaveGame}>Leave Game</button>
-  {/if}
-
-  <hr />
-
-  <p>Your Firebase ID: {user?.uid}</p>
-{:else}
-  <p>No game is currently running.</p>
-{/if} -->
 
 <!-- ---------------------------------------------------------------------------- -->
 <!-- Knock/Gin modal -->
