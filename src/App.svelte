@@ -311,6 +311,7 @@
       player2Hand: gameState.player2Hand,
       discardPile: gameState.discardPile,
       canKnock: gameState.canKnock,
+      currentPlayer: "player1", // Reset to player1 (non-dealer) turn for the new hand
     });
   }
 
@@ -597,7 +598,7 @@
     </div>
     <span class="hand-label">Player 1</span>
 
-    <!-- Display new game button -->
+    <!-- Display new hand button -->
     <!-- Only Dealer can shuffle and deal a new hand -->
     <div class="controls">
       <button
@@ -606,7 +607,7 @@
         onclick={newHand}>New Hand</button
       >
     </div>
-    <!-- End Display new game button -->
+    <!-- End Display new hand button -->
   </section>
   <!-- End Display player hand -->
 </div>
