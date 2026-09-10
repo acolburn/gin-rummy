@@ -5,7 +5,7 @@
   import { auth, db } from "./firebase.js";
   import { onMount } from "svelte";
   import { signInAnonymously } from "firebase/auth";
-  import { doc, onSnapshot, updateDoc } from "firebase/firestore";
+  import { doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
   import { toHandCard } from "./cards.js";
   import { calculateDeadwood } from "./HandEvaluation.svelte";
 
@@ -38,7 +38,7 @@
 
       const gameRef = doc(db, "games", "gin-rummy");
 
-      onSnapshot(gameRef, (snapshot) => {
+      onSnapshot(gameRef, async (snapshot) => {
         if (snapshot.exists()) {
           gameSnapshotData = snapshot.data();
 
@@ -62,6 +62,7 @@
         } else {
           console.log("There is no current game.");
           gameSnapshotData = undefined;
+          await makeDeck();
         }
       });
     } catch (error) {
@@ -86,12 +87,14 @@
   // Sync only the given fields to Firestore (defaults to the full gameState).
   // Scoping updates to just what changed avoids one client's stale local copy
   // of unrelated fields clobbering another client's concurrent changes.
+  // Uses setDoc + merge (not updateDoc) so this also works the first time,
+  // when the game doc doesn't exist yet (e.g. makeDeck's bootstrap call).
   /** @param {Partial<typeof gameState>} fields */
   async function syncGameState(fields = { ...gameState }) {
     const gameRef = doc(db, "games", "gin-rummy");
 
     try {
-      await updateDoc(gameRef, fields);
+      await setDoc(gameRef, fields, { merge: true });
     } catch (error) {
       console.error("Could not sync game state:", error);
     }
@@ -159,12 +162,6 @@
       isDragging = false; // Brief delay before restting to the click event finishes getting ignored
     }, 50);
   }
-
-  // Fetch a new deck from the API when the component is mounted, i.e, when the page is loaded
-  // Will only run once; no state variale inside the effect, so no re-run on state change
-  $effect(() => {
-    makeDeck();
-  });
 
   async function switchPlayer() {
     gameState.currentPlayer =
@@ -349,9 +346,7 @@
     // Remove the card from the current player's hand
     const handField =
       gameState.currentPlayer === "player1" ? "player1Hand" : "player2Hand";
-    gameState[handField] = gameState[handField].filter(
-      (c) => c.id !== card.id,
-    );
+    gameState[handField] = gameState[handField].filter((c) => c.id !== card.id);
     // Add the card to the discard pile
     gameState.discardPile = [...gameState.discardPile, card];
     // Calculate the deadwood for the current player
