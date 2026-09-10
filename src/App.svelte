@@ -30,6 +30,12 @@
     // This function intentionally does nothing
   }
 
+  // Shown in the status bar when Firebase is unreachable or rejecting us.
+  // Empty string = everything is fine. Previously these failures were only
+  // console.error'd, which left the game silently dead (face-down cards,
+  // unresponsive buttons) with no hint why.
+  let firebaseError = $state("");
+
   // onMount means runs this after the component is loaded in the browser/DOM
   // Firebase still needs an authenticated (anonymous) user for Firestore access
   onMount(async () => {
@@ -38,41 +44,55 @@
 
       const gameRef = doc(db, "games", "gin-rummy");
 
-      onSnapshot(gameRef, async (snapshot) => {
-        if (snapshot.exists() && snapshot.data().deckId) {
-          gameSnapshotData = snapshot.data();
+      onSnapshot(
+        gameRef,
+        async (snapshot) => {
+          firebaseError = ""; // listener is alive; clear any earlier error
+          console.log("Firestore snapshot:", snapshot.data());
+          if (snapshot.exists() && snapshot.data().deckId) {
+            gameSnapshotData = snapshot.data();
 
-          // Pull any game-play fields that exist in Firestore into our local gameState
-          // Objects.keys(gameState) returns an array of the keys in gameState,
-          // e.g., ["player1Hand", "player2Hand", "discardPile", "deckId",
-          // "currentPlayer"]
-          Object.keys(gameState).forEach((key) => {
-            if (gameSnapshotData[key] !== undefined) {
-              gameState[key] = gameSnapshotData[key];
+            // Pull any game-play fields that exist in Firestore into our local gameState
+            // Objects.keys(gameState) returns an array of the keys in gameState,
+            // e.g., ["player1Hand", "player2Hand", "discardPile", "deckId",
+            // "currentPlayer"]
+            Object.keys(gameState).forEach((key) => {
+              if (gameSnapshotData[key] !== undefined) {
+                gameState[key] = gameSnapshotData[key];
+              }
+            });
+
+            if (gameSnapshotData.player1 === myId) {
+              playerNumber = 1;
+            } else if (gameSnapshotData.player2 === myId) {
+              playerNumber = 2;
+            } else {
+              playerNumber = undefined;
             }
-          });
-
-          if (gameSnapshotData.player1 === myId) {
-            playerNumber = 1;
-          } else if (gameSnapshotData.player2 === myId) {
-            playerNumber = 2;
           } else {
-            playerNumber = undefined;
+            // Doc is missing entirely, or exists but has no deck yet (e.g. a
+            // seat was claimed before any deck was created). Exactly one client
+            // should bootstrap the deck, otherwise both browsers create
+            // competing decks and the second deckId write clobbers the first.
+            console.log("There is no current game.");
+            gameSnapshotData = undefined;
+            if (claimBootstrap()) {
+              await makeDeck();
+            }
           }
-        } else {
-          // Doc is missing entirely, or exists but has no deck yet (e.g. a
-          // seat was claimed before any deck was created). Exactly one client
-          // should bootstrap the deck, otherwise both browsers create
-          // competing decks and the second deckId write clobbers the first.
-          console.log("There is no current game.");
-          gameSnapshotData = undefined;
-          if (claimBootstrap()) {
-            await makeDeck();
-          }
-        }
-      });
+        },
+        // Firestore security rules can REJECT this listener entirely (e.g.
+        // "permission-denied"). Without this error callback the app just
+        // silently never updates.
+        (error) => {
+          console.error("Firestore listener error:", error);
+          firebaseError = `Database error: ${error.code || error.message}. Check Firestore rules and that anonymous sign-in is enabled.`;
+        },
+      );
     } catch (error) {
-      console.error("Firebase error:", error);
+      const e = /** @type {any} */ (error);
+      console.error("Firebase error:", e);
+      firebaseError = `Sign-in failed: ${e.code || e.message}. Enable anonymous auth in the Firebase console.`;
     }
   });
 
@@ -89,7 +109,9 @@
     try {
       await setDoc(gameRef, { [field]: myId }, { merge: true });
     } catch (error) {
-      console.error("Could not claim seat:", error);
+      const e = /** @type {any} */ (error);
+      console.error("Could not claim seat:", e);
+      firebaseError = `Could not claim seat: ${e.code || e.message}`;
     }
   }
 
@@ -129,7 +151,9 @@
     try {
       await setDoc(gameRef, fields, { merge: true });
     } catch (error) {
-      console.error("Could not sync game state:", error);
+      const e = /** @type {any} */ (error);
+      console.error("Could not sync game state:", e);
+      firebaseError = `Could not save to database: ${e.code || e.message}`;
     }
   }
 
@@ -151,6 +175,26 @@
     (playerNumber === 1 && gameState.currentPlayer === "player1") ||
       (playerNumber === 2 && gameState.currentPlayer === "player2"),
   );
+
+  // Keys for the keyed {#each} blocks that render the hands. Normally each
+  // card id is unique, so the key is just the id (which lets Svelte animate
+  // reorders instead of remounting cards). But if Firestore data ever gets
+  // corrupted with a duplicate card, a duplicate key makes Svelte THROW
+  // mid-render (dev mode), freezing the whole UI -- including the "New Hand"
+  // button you'd need to fix the data. Appending an occurrence counter keeps
+  // keys unique so one bad document can never brick the app.
+  /** @param {any[]} hand */
+  function uniqueKeys(hand) {
+    const seen = new Map();
+    return hand.map((card) => {
+      const count = seen.get(card.id) || 0;
+      seen.set(card.id, count + 1);
+      return count === 0 ? card.id : `${card.id}#dup${count}`;
+    });
+  }
+  let player1Keys = $derived(uniqueKeys(gameState.player1Hand));
+  let player2Keys = $derived(uniqueKeys(gameState.player2Hand));
+
   let showKnockModal = $state(false);
   let knockModalRef;
 
@@ -412,7 +456,9 @@
   <header class="topbar">
     <h1>Gin Rummy</h1>
     <p class="status">
-      {#if playerNumber === undefined}
+      {#if firebaseError}
+        <span class="status-dot red"></span>{firebaseError}
+      {:else if playerNumber === undefined}
         <span class="status-dot red"></span>Choose a seat to play
       {:else if gameState.currentPlayer === "player1" && playerNumber === 1}
         <span class="status-dot green"></span>Your turn
@@ -446,7 +492,7 @@
       <!-- We don't need to know anything about actual cards in opponent's hand; just show card backs. -->
       <!-- Use card, index (index) rather than card.id, so rearranging cards in opponent hand doesn't cause -->
       <!-- the card backs to flip unnecessarily. -->
-      {#each gameState.player2Hand as card, index (playerNumber === 2 ? card.id : index)}
+      {#each gameState.player2Hand as card, index (playerNumber === 2 ? player2Keys[index] : index)}
         <div animate:flip={{ duration: flipDurationMs }}>
           <Card
             code={playerNumber === 2 ? card.code : "BK"}
@@ -538,7 +584,7 @@
       <!-- We don't need to know anything about actual cards in opponent's hand; just show card backs. -->
       <!-- Use card, index (index) rather than card.id, so rearranging cards in opponent hand doesn't cause -->
       <!-- the card backs to flip unnecessarily. -->
-      {#each gameState.player1Hand as card, index (playerNumber === 1 ? card.id : index)}
+      {#each gameState.player1Hand as card, index (playerNumber === 1 ? player1Keys[index] : index)}
         <div animate:flip={{ duration: flipDurationMs }}>
           <Card
             code={playerNumber === 1 ? card.code : "BK"}
