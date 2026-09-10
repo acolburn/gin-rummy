@@ -5,7 +5,7 @@
   import { auth, db } from "./firebase.js";
   import { onMount } from "svelte";
   import { signInAnonymously } from "firebase/auth";
-  import { doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
+  import { doc, onSnapshot, setDoc } from "firebase/firestore";
   import { toHandCard } from "./cards.js";
   import { calculateDeadwood } from "./HandEvaluation.svelte";
 
@@ -39,7 +39,7 @@
       const gameRef = doc(db, "games", "gin-rummy");
 
       onSnapshot(gameRef, async (snapshot) => {
-        if (snapshot.exists()) {
+        if (snapshot.exists() && snapshot.data().deckId) {
           gameSnapshotData = snapshot.data();
 
           // Pull any game-play fields that exist in Firestore into our local gameState
@@ -60,9 +60,15 @@
             playerNumber = undefined;
           }
         } else {
+          // Doc is missing entirely, or exists but has no deck yet (e.g. a
+          // seat was claimed before any deck was created). Exactly one client
+          // should bootstrap the deck, otherwise both browsers create
+          // competing decks and the second deckId write clobbers the first.
           console.log("There is no current game.");
           gameSnapshotData = undefined;
-          await makeDeck();
+          if (claimBootstrap()) {
+            await makeDeck();
+          }
         }
       });
     } catch (error) {
@@ -73,14 +79,41 @@
   // Claim the Dealer (player2) or Non-Dealer (player1) seat by writing our id to
   // Firestore. This is a friendly game, so we don't check who currently holds
   // the seat -- clicking always (re)assigns it.
+  // Uses setDoc + merge, NOT updateDoc: on a fresh database the game doc may
+  // not exist yet, and updateDoc throws in that case, silently leaving the
+  // player seat-less (which disables New Hand and ignores all taps).
   async function claimSeat(seatNumber) {
     const field = seatNumber === 1 ? "player1" : "player2";
     const gameRef = doc(db, "games", "gin-rummy");
 
     try {
-      await updateDoc(gameRef, { [field]: myId });
+      await setDoc(gameRef, { [field]: myId }, { merge: true });
     } catch (error) {
       console.error("Could not claim seat:", error);
+    }
+  }
+
+  // Cross-tab guard so only one browser bootstraps the deck when the game
+  // doc is missing. The lock auto-expires so a crashed tab can't wedge the
+  // game, and is keyed by an epoch so a brand-new game (after the doc is
+  // deleted) can be bootstrapped again.
+  function claimBootstrap() {
+    const lockKey = "ginRummyBootstrapLock";
+    const now = Date.now();
+    try {
+      const raw = localStorage.getItem(lockKey);
+      if (raw) {
+        const lock = JSON.parse(raw);
+        if (now - lock.time < 15000) {
+          return false; // Another tab is already creating the deck
+        }
+      }
+      localStorage.setItem(lockKey, JSON.stringify({ time: now }));
+      return true;
+    } catch {
+      // localStorage unavailable (e.g. some private modes); fall back to
+      // letting this client try. Worst case is the old double-deck race.
+      return true;
     }
   }
 
