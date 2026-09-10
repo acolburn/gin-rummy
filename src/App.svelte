@@ -173,7 +173,10 @@
     });
   }
 
-  async function makeDeck() {
+  // Creates a fresh shuffled deck. When sync is false, the caller is
+  // responsible for syncing deckId (newHand does this atomically together
+  // with the dealt hands, so no client ever sees a new deckId with old cards).
+  async function makeDeck(sync = true) {
     // Fetch a new shuffled deck from the API
     const response = await fetch(
       "https://deckofcardsapi.com/api/deck/new/shuffle/",
@@ -181,7 +184,9 @@
     );
     const data = await response.json();
     gameState.deckId = data.deck_id;
-    await syncGameState({ deckId: gameState.deckId }); // Sync the new deckId with Firestore
+    if (sync) {
+      await syncGameState({ deckId: gameState.deckId }); // Sync the new deckId with Firestore
+    }
   }
 
   // makes deck, assigns deckId used throughout the JavaScript
@@ -191,7 +196,10 @@
     // const reshuffleDeck = await fetch(
     //   `https://deckofcardsapi.com/api/deck/${gameState.deckId}/shuffle/`,
     // );
-    makeDeck(); // Create a new deck instead of reshuffling the old one, in case old one is >2 wks old
+    // MUST be awaited: otherwise the draws below use the OLD deckId while the
+    // NEW deckId gets synced to Firestore, so future draws come from a full
+    // 52-card deck and can duplicate cards already in hands/discard pile.
+    await makeDeck(false); // New deck in case old one is >2 wks old; deckId synced with the hands below
     gameState.player1Hand = [];
     gameState.player2Hand = [];
     gameState.discardPile = [];
@@ -218,7 +226,10 @@
     );
     const discardData = await discardResponse.json();
     gameState.discardPile = discardData.cards.map((card) => toHandCard(card));
+    // Sync deckId together with the dealt cards so no client ever holds the
+    // new deckId while the old hands/discard are still visible.
     await syncGameState({
+      deckId: gameState.deckId,
       player1Hand: gameState.player1Hand,
       player2Hand: gameState.player2Hand,
       discardPile: gameState.discardPile,
@@ -542,7 +553,13 @@
     </header>
     <p>Well done!</p>
     <footer>
-      <button class="btn-primary" onclick={newHand}>New Hand</button>
+      <!-- Seat-gated like the main New Hand button: if both players deal at
+           once, the two deals interleave and mix cards from two decks. -->
+      <button
+        class="btn-primary"
+        disabled={playerNumber !== 2}
+        onclick={newHand}>New Hand</button
+      >
       <button class="btn-continue" onclick={() => (showKnockModal = false)}
         >Cancel</button
       >
