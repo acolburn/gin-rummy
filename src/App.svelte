@@ -83,13 +83,15 @@
     }
   }
 
-  async function syncGameState() {
+  // Sync only the given fields to Firestore (defaults to the full gameState).
+  // Scoping updates to just what changed avoids one client's stale local copy
+  // of unrelated fields clobbering another client's concurrent changes.
+  /** @param {Partial<typeof gameState>} fields */
+  async function syncGameState(fields = { ...gameState }) {
     const gameRef = doc(db, "games", "gin-rummy");
 
     try {
-      // Update the Firestore document with the current gameState
-      // We will update the fields we pass in
-      await updateDoc(gameRef, { ...gameState });
+      await updateDoc(gameRef, fields);
     } catch (error) {
       console.error("Could not sync game state:", error);
     }
@@ -137,7 +139,7 @@
   }
   function handleDndFinalize(event) {
     gameState.player1Hand = event.detail.items;
-    syncGameState();
+    syncGameState({ player1Hand: gameState.player1Hand });
 
     setTimeout(() => {
       isDragging = false; // Brief delay before restting to the click event finishes getting ignored
@@ -151,7 +153,7 @@
   }
   function handleOpponentDndFinalize(event) {
     gameState.player2Hand = event.detail.items;
-    syncGameState();
+    syncGameState({ player2Hand: gameState.player2Hand });
 
     setTimeout(() => {
       isDragging = false; // Brief delay before restting to the click event finishes getting ignored
@@ -167,7 +169,11 @@
   async function switchPlayer() {
     gameState.currentPlayer =
       gameState.currentPlayer === "player1" ? "player2" : "player1";
-    await syncGameState();
+    gameState.canKnock = false;
+    await syncGameState({
+      currentPlayer: gameState.currentPlayer,
+      canKnock: gameState.canKnock,
+    });
   }
 
   async function makeDeck() {
@@ -178,7 +184,7 @@
     );
     const data = await response.json();
     gameState.deckId = data.deck_id;
-    await syncGameState(); // Sync the new deckId with Firestore
+    await syncGameState({ deckId: gameState.deckId }); // Sync the new deckId with Firestore
   }
 
   // makes deck, assigns deckId used throughout the JavaScript
@@ -214,7 +220,12 @@
     );
     const discardData = await discardResponse.json();
     gameState.discardPile = discardData.cards.map((card) => toHandCard(card));
-    await syncGameState();
+    await syncGameState({
+      player1Hand: gameState.player1Hand,
+      player2Hand: gameState.player2Hand,
+      discardPile: gameState.discardPile,
+      canKnock: gameState.canKnock,
+    });
   }
 
   // draw one card from the deck
@@ -254,10 +265,11 @@
     if (newCardCode) {
       if (gameState.currentPlayer === "player1") {
         gameState.player1Hand = [...gameState.player1Hand, newCardCode];
+        await syncGameState({ player1Hand: gameState.player1Hand });
       } else {
         gameState.player2Hand = [...gameState.player2Hand, newCardCode];
+        await syncGameState({ player2Hand: gameState.player2Hand });
       }
-      await syncGameState();
     }
   }
 
@@ -283,14 +295,21 @@
     if (gameState.discardPile.length > 0) {
       const newCardCode =
         gameState.discardPile[gameState.discardPile.length - 1];
-      if (gameState.currentPlayer === "player1") {
-        gameState.player1Hand = [...gameState.player1Hand, newCardCode];
-      } else {
-        gameState.player2Hand = [...gameState.player2Hand, newCardCode];
-      }
       // Remove the card from the discard pile
       gameState.discardPile = gameState.discardPile.slice(0, -1);
-      await syncGameState();
+      if (gameState.currentPlayer === "player1") {
+        gameState.player1Hand = [...gameState.player1Hand, newCardCode];
+        await syncGameState({
+          player1Hand: gameState.player1Hand,
+          discardPile: gameState.discardPile,
+        });
+      } else {
+        gameState.player2Hand = [...gameState.player2Hand, newCardCode];
+        await syncGameState({
+          player2Hand: gameState.player2Hand,
+          discardPile: gameState.discardPile,
+        });
+      }
     } else {
       alert("No cards in the discard pile.");
     }
@@ -328,31 +347,24 @@
       return;
     }
     // Remove the card from the current player's hand
-    if (gameState.currentPlayer === "player1") {
-      gameState.player1Hand = gameState.player1Hand.filter(
-        (c) => c.id !== card.id,
-      );
-    } else {
-      gameState.player2Hand = gameState.player2Hand.filter(
-        (c) => c.id !== card.id,
-      );
-    }
+    const handField =
+      gameState.currentPlayer === "player1" ? "player1Hand" : "player2Hand";
+    gameState[handField] = gameState[handField].filter(
+      (c) => c.id !== card.id,
+    );
     // Add the card to the discard pile
     gameState.discardPile = [...gameState.discardPile, card];
     // Calculate the deadwood for the current player
-    if (
-      (gameState.currentPlayer === "player1" &&
-        calculateDeadwood(gameState.player1Hand) <= 10) ||
-      (gameState.currentPlayer === "player2" &&
-        calculateDeadwood(gameState.player2Hand) <= 10)
-    ) {
-      gameState.canKnock = true;
-    } else {
-      gameState.canKnock = false;
+    gameState.canKnock = calculateDeadwood(gameState[handField]) <= 10;
+    await syncGameState({
+      [handField]: gameState[handField],
+      discardPile: gameState.discardPile,
+      canKnock: gameState.canKnock,
+    });
+    if (!gameState.canKnock) {
       // Turn ends; switch to the other player
-      switchPlayer();
+      await switchPlayer();
     }
-    await syncGameState();
   }
 </script>
 
@@ -418,7 +430,6 @@
         <button
           class="btn-continue"
           onclick={() => {
-            gameState.canKnock = false;
             switchPlayer();
           }}>Continue</button
         >
@@ -467,7 +478,6 @@
         <button
           class="btn-continue"
           onclick={() => {
-            gameState.canKnock = false;
             switchPlayer();
           }}>Continue</button
         >
