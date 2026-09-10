@@ -106,13 +106,13 @@
     discardPile: [],
     deckId: "",
     currentPlayer: "player1", // "player1" or "player2"
+    canKnock: false, // Whether the current player can knock (i.e., has 10 or fewer deadwood points)
   });
   // Am I allowed to act right now? (i.e., is it my turn?)
   let isMyTurn = $derived(
     (playerNumber === 1 && gameState.currentPlayer === "player1") ||
       (playerNumber === 2 && gameState.currentPlayer === "player2"),
   );
-  let canKnock = $state(false); // Whether the player can knock (i.e., has 10 or fewer deadwood points)
   let showKnockModal = $state(false);
   let knockModalRef;
 
@@ -191,7 +191,7 @@
     gameState.player1Hand = [];
     gameState.player2Hand = [];
     gameState.discardPile = [];
-    canKnock = false;
+    gameState.canKnock = false;
 
     // Draw 10 cards from deck, assign to playerHand
     const drawResponse = await fetch(
@@ -346,9 +346,9 @@
       (gameState.currentPlayer === "player2" &&
         calculateDeadwood(gameState.player2Hand) <= 10)
     ) {
-      canKnock = true;
+      gameState.canKnock = true;
     } else {
-      canKnock = false;
+      gameState.canKnock = false;
       // Turn ends; switch to the other player
       switchPlayer();
     }
@@ -408,7 +408,7 @@
 
     <!-- Display buttons for opponent player to knock/gin or discard -->
     <div class="action-row">
-      {#if canKnock && gameState.currentPlayer === "player2"}
+      {#if gameState.canKnock && gameState.currentPlayer === "player2"}
         <button
           class="btn-knock"
           onclick={() => {
@@ -418,7 +418,7 @@
         <button
           class="btn-continue"
           onclick={() => {
-            canKnock = false;
+            gameState.canKnock = false;
             switchPlayer();
           }}>Continue</button
         >
@@ -457,7 +457,7 @@
   <section class="player-area">
     <!-- Display buttons for current player to knock/gin or discard -->
     <div class="action-row">
-      {#if canKnock && gameState.currentPlayer === "player1"}
+      {#if gameState.canKnock && gameState.currentPlayer === "player1"}
         <button
           class="btn-knock"
           onclick={() => {
@@ -467,7 +467,7 @@
         <button
           class="btn-continue"
           onclick={() => {
-            canKnock = false;
+            gameState.canKnock = false;
             switchPlayer();
           }}>Continue</button
         >
