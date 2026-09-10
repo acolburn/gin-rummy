@@ -176,8 +176,8 @@
   async function makeDeck() {
     // Fetch a new shuffled deck from the API
     const response = await fetch(
-      // "https://deckofcardsapi.com/api/deck/new/shuffle/",
-      "https://deckofcardsapi.com/api/deck/new/",
+      "https://deckofcardsapi.com/api/deck/new/shuffle/",
+      // "https://deckofcardsapi.com/api/deck/new/",
     );
     const data = await response.json();
     gameState.deckId = data.deck_id;
@@ -188,9 +188,10 @@
   async function newHand() {
     showKnockModal = false;
     // Reshuffle the deck and reset hands and discard pile
-    const reshuffleDeck = await fetch(
-      `https://deckofcardsapi.com/api/deck/${gameState.deckId}/shuffle/`,
-    );
+    // const reshuffleDeck = await fetch(
+    //   `https://deckofcardsapi.com/api/deck/${gameState.deckId}/shuffle/`,
+    // );
+    makeDeck(); // Create a new deck instead of reshuffling the old one, in case old one is >2 wks old
     gameState.player1Hand = [];
     gameState.player2Hand = [];
     gameState.discardPile = [];
