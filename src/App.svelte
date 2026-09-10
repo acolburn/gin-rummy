@@ -391,7 +391,10 @@
       onconsider={handleOpponentDndConsider}
       onfinalize={handleOpponentDndFinalize}
     >
-      {#each gameState.player2Hand as card (card.id)}
+      <!-- We don't need to know anything about actual cards in opponent's hand; just show card backs. -->
+      <!-- Use card, index (index) rather than card.id, so rearranging cards in opponent hand doesn't cause -->
+      <!-- the card backs to flip unnecessarily. -->
+      {#each gameState.player2Hand as card, index (playerNumber === 2 ? card.id : index)}
         <div animate:flip={{ duration: flipDurationMs }}>
           <Card
             code={playerNumber === 2 ? card.code : "BK"}
@@ -482,7 +485,10 @@
       onconsider={handleDndConsider}
       onfinalize={handleDndFinalize}
     >
-      {#each gameState.player1Hand as card (card.id)}
+      <!-- We don't need to know anything about actual cards in opponent's hand; just show card backs. -->
+      <!-- Use card, index (index) rather than card.id, so rearranging cards in opponent hand doesn't cause -->
+      <!-- the card backs to flip unnecessarily. -->
+      {#each gameState.player1Hand as card, index (playerNumber === 1 ? card.id : index)}
         <div animate:flip={{ duration: flipDurationMs }}>
           <Card
             code={playerNumber === 1 ? card.code : "BK"}
