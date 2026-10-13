@@ -18,7 +18,7 @@
 <button
   class="card-button"
   class:face-down={code === "BK"}
-  onclick={() => onCardClick(code)}
+  onclick={() => onCardClick?.(code)}
 >
   <img src={displayCard(code)} alt={code} draggable="false" />
 </button>

@@ -7,10 +7,12 @@
   import { signInAnonymously } from "firebase/auth";
   import { doc, onSnapshot, setDoc } from "firebase/firestore";
   import { toHandCard } from "./cards.js";
-  import { calculateDeadwood } from "./HandEvaluation.svelte";
+  // import { calculateDeadwood } from "./HandEvaluation.svelte";
+  import { bestDeadwood } from "./EvaluateHand.js";
 
   let gameSnapshotData = $state();
   let playerNumber = $state();
+  // console.log(bestDeadwood(["3H", "4H", "5H", "5D", "5S", "5C", "2H", "JS"]));
 
   // Identify this browser with a simple random id stored locally, instead of
   // relying on Firebase Auth's uid (which was the source of the occasional
@@ -197,6 +199,20 @@
 
   let showKnockModal = $state(false);
   let knockModalRef;
+  // The player who discarded (the current player) is the one knocking
+  let knockingPlayerNumber = $derived(
+    gameState.currentPlayer === "player1" ? 1 : 2,
+  );
+  let knockingHand = $derived(
+    gameState.currentPlayer === "player1"
+      ? gameState.player1Hand
+      : gameState.player2Hand,
+  );
+  let opponentHand = $derived(
+    gameState.currentPlayer === "player1"
+      ? gameState.player2Hand
+      : gameState.player1Hand,
+  );
 
   // Open/close the knock modal when showKnockModal changes
   $effect(() => {
@@ -440,7 +456,8 @@
     // Add the card to the discard pile
     gameState.discardPile = [...gameState.discardPile, card];
     // Calculate the deadwood for the current player
-    gameState.canKnock = calculateDeadwood(gameState[handField]) <= 10;
+    // gameState.canKnock = calculateDeadwood(gameState[handField]) <= 10;
+    gameState.canKnock = bestDeadwood(gameState[handField]) <= 10;
     await syncGameState({
       [handField]: gameState[handField],
       discardPile: gameState.discardPile,
@@ -507,12 +524,12 @@
 
     <!-- Display buttons for opponent player to knock/gin or discard -->
     <div class="action-row">
-      {#if gameState.canKnock && gameState.currentPlayer === "player2"}
+      {#if gameState.canKnock && gameState.currentPlayer === "player2" && playerNumber === 2}
         <button
           class="btn-knock"
           onclick={() => {
             showKnockModal = true;
-          }}>Knock ({calculateDeadwood(gameState.player2Hand)} pts)</button
+          }}>Knock ({bestDeadwood(gameState.player2Hand)} pts)</button
         >
         <button
           class="btn-continue"
@@ -555,12 +572,12 @@
   <section class="player-area">
     <!-- Display buttons for current player to knock/gin or discard -->
     <div class="action-row">
-      {#if gameState.canKnock && gameState.currentPlayer === "player1"}
+      {#if gameState.canKnock && gameState.currentPlayer === "player1" && playerNumber === 1}
         <button
           class="btn-knock"
           onclick={() => {
             showKnockModal = true;
-          }}>Knock ({calculateDeadwood(gameState.player1Hand)} pts)</button
+          }}>Knock ({bestDeadwood(gameState.player1Hand)} pts)</button
         >
         <button
           class="btn-continue"
@@ -625,19 +642,20 @@
     <header>
       <p>
         <strong
-          >{calculateDeadwood(gameState.player1Hand) === 0
+          >{bestDeadwood(knockingHand) === 0
             ? "Gin!"
-            : `Knock for ${calculateDeadwood(gameState.player1Hand)} points`}</strong
+            : `Knock for ${bestDeadwood(knockingHand)} points`}</strong
         >
       </p>
     </header>
     <p>Well done!</p>
+    <p>Opponent has {bestDeadwood(opponentHand)} points in their hand.</p>
     <footer>
       <!-- Seat-gated like the main New Hand button: if both players deal at
            once, the two deals interleave and mix cards from two decks. -->
       <button
         class="btn-primary"
-        disabled={playerNumber !== 2}
+        disabled={playerNumber !== knockingPlayerNumber}
         onclick={newHand}>New Hand</button
       >
       <button class="btn-continue" onclick={() => (showKnockModal = false)}
