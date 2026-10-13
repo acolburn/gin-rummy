@@ -53,6 +53,8 @@
           console.log("Firestore snapshot:", snapshot.data());
           if (snapshot.exists() && snapshot.data().deckId) {
             gameSnapshotData = snapshot.data();
+            const previousKnockedByPlayerNumber =
+              gameState.knockedByPlayerNumber;
 
             // Pull any game-play fields that exist in Firestore into our local gameState
             // Objects.keys(gameState) returns an array of the keys in gameState,
@@ -63,6 +65,15 @@
                 gameState[key] = gameSnapshotData[key];
               }
             });
+
+            if (
+              gameSnapshotData.knockedByPlayerNumber !== undefined &&
+              gameSnapshotData.knockedByPlayerNumber !==
+                previousKnockedByPlayerNumber
+            ) {
+              showKnockModal =
+                gameSnapshotData.knockedByPlayerNumber !== null;
+            }
 
             if (gameSnapshotData.player1 === myId) {
               playerNumber = 1;
@@ -171,6 +182,7 @@
     deckId: "",
     currentPlayer: "player1", // "player1" or "player2"
     canKnock: false, // Whether the current player can knock (i.e., has 10 or fewer deadwood points)
+    knockedByPlayerNumber: null,
   });
   // Am I allowed to act right now? (i.e., is it my turn?)
   let isMyTurn = $derived(
@@ -257,12 +269,23 @@
   }
 
   async function switchPlayer() {
+    showKnockModal = false;
     gameState.currentPlayer =
       gameState.currentPlayer === "player1" ? "player2" : "player1";
     gameState.canKnock = false;
+    gameState.knockedByPlayerNumber = null;
     await syncGameState({
       currentPlayer: gameState.currentPlayer,
       canKnock: gameState.canKnock,
+      knockedByPlayerNumber: gameState.knockedByPlayerNumber,
+    });
+  }
+
+  async function announceKnock(playerNumber) {
+    showKnockModal = true;
+    gameState.knockedByPlayerNumber = playerNumber;
+    await syncGameState({
+      knockedByPlayerNumber: gameState.knockedByPlayerNumber,
     });
   }
 
@@ -297,6 +320,7 @@
     gameState.player2Hand = [];
     gameState.discardPile = [];
     gameState.canKnock = false;
+    gameState.knockedByPlayerNumber = null;
 
     // Draw 10 cards from deck, assign to playerHand
     const drawResponse = await fetch(
@@ -327,6 +351,7 @@
       player2Hand: gameState.player2Hand,
       discardPile: gameState.discardPile,
       canKnock: gameState.canKnock,
+      knockedByPlayerNumber: gameState.knockedByPlayerNumber,
       currentPlayer: "player1", // Reset to player1 (non-dealer) turn for the new hand
     });
   }
@@ -528,7 +553,7 @@
         <button
           class="btn-knock"
           onclick={() => {
-            showKnockModal = true;
+            announceKnock(2);
           }}>Knock ({bestDeadwood(gameState.player2Hand)} pts)</button
         >
         <button
@@ -576,7 +601,7 @@
         <button
           class="btn-knock"
           onclick={() => {
-            showKnockModal = true;
+            announceKnock(1);
           }}>Knock ({bestDeadwood(gameState.player1Hand)} pts)</button
         >
         <button
@@ -649,7 +674,10 @@
       </p>
     </header>
     <p>Well done!</p>
-    <p>Opponent has {bestDeadwood(opponentHand)} points in their hand.</p>
+    <p>
+      Opponent has {bestDeadwood(opponentHand)} points in their hand. That's a difference
+      of {bestDeadwood(opponentHand) - bestDeadwood(knockingHand)} points.
+    </p>
     <footer>
       <!-- Seat-gated like the main New Hand button: if both players deal at
            once, the two deals interleave and mix cards from two decks. -->

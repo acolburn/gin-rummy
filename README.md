@@ -2,7 +2,10 @@ TODO
 
 - If hand reaches end of deck, nothing happens
 - When player knocks or gins, knocking player should become dealer, and other player should become non-dealer
-- AND hands should be scored. Need logic to reflect non-knocker laying off cards intothe knocker's melds
+- AND hands should be scored.
+- Need scoring logic to reflect non-knocker laying off cards into the knocker's melds
+- Need scoring logic to reflect non-knocker undercutting knocker
+- Make sure non-knocker sees modal that appears after knocking (i.e., discussing points earned)
 
 ---
 
