@@ -71,8 +71,7 @@
               gameSnapshotData.knockedByPlayerNumber !==
                 previousKnockedByPlayerNumber
             ) {
-              showKnockModal =
-                gameSnapshotData.knockedByPlayerNumber !== null;
+              showKnockModal = gameSnapshotData.knockedByPlayerNumber !== null;
             }
 
             if (gameSnapshotData.player1 === myId) {
@@ -677,6 +676,9 @@
     <p>
       Opponent has {bestDeadwood(opponentHand)} points in their hand. That's a difference
       of {bestDeadwood(opponentHand) - bestDeadwood(knockingHand)} points.
+      {#if bestDeadwood(opponentHand) <= bestDeadwood(knockingHand)}
+        The opponent has undercut the knocking player.
+      {/if}
     </p>
     <footer>
       <!-- Seat-gated like the main New Hand button: if both players deal at

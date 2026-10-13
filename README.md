@@ -5,7 +5,6 @@ TODO
 - AND hands should be scored.
 - Need scoring logic to reflect non-knocker laying off cards into the knocker's melds
 - Need scoring logic to reflect non-knocker undercutting knocker
-- Make sure non-knocker sees modal that appears after knocking (i.e., discussing points earned)
 
 ---
 
