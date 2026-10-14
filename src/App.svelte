@@ -23,7 +23,6 @@
   import { signInAnonymously } from "firebase/auth"; // log in without a username/password
   import { doc, onSnapshot, setDoc } from "firebase/firestore"; // database functions
   import { toHandCard } from "./cards.js"; // converts an API card into our card object
-  // import { calculateDeadwood } from "./HandEvaluation.svelte";
   import {
     bestDeadwood, // lowest possible deadwood total for a hand
     deadwoodAfterLayoff, // opponent's deadwood after adding cards to knocker's melds
@@ -34,7 +33,6 @@
   let gameSnapshotData = $state();
   // Which seat this browser occupies: 1 (non-dealer), 2 (dealer), or undefined (spectator)
   let playerNumber = $state();
-  // console.log(bestDeadwood(["3H", "4H", "5H", "5D", "5S", "5C", "2H", "JS"]));
 
   // Identify this browser with a simple random id stored locally, instead of
   // relying on Firebase Auth's uid (which was the source of the occasional
@@ -216,8 +214,7 @@
     }
   }
 
-  // Holds all the shared game data in one place, e.g., this can be synced
-  // with a shared game state, such as via Firestore, later on
+  // Holds the shared game data in one place; syncGameState writes changes to Firestore.
   let gameState = $state({
     /** @type {any[]} */
     player1Hand: [],
@@ -405,10 +402,6 @@
   // starts instead.
   async function newHand(resetScores = false, startingPlayer = "player1") {
     showKnockModal = false;
-    // Reshuffle the deck and reset hands and discard pile
-    // const reshuffleDeck = await fetch(
-    //   `https://deckofcardsapi.com/api/deck/${gameState.deckId}/shuffle/`,
-    // );
     // MUST be awaited: otherwise the draws below use the OLD deckId while the
     // NEW deckId gets synced to Firestore, so future draws come from a full
     // 52-card deck and can duplicate cards already in hands/discard pile.
@@ -502,15 +495,15 @@
       alert("Your hand is full. Cannot draw more cards.");
       return;
     }
-    const newCardCode = await drawCard(); // a card object (despite the name) or null
-    if (newCardCode) {
+    const newCard = await drawCard(); // A card object, or null if the deck is empty
+    if (newCard) {
       // [...hand, card] makes a NEW array with the card on the end; assigning a
       // new array (rather than push) is what makes Svelte notice the change
       if (gameState.currentPlayer === "player1") {
-        gameState.player1Hand = [...gameState.player1Hand, newCardCode];
+        gameState.player1Hand = [...gameState.player1Hand, newCard];
         await syncGameState({ player1Hand: gameState.player1Hand });
       } else {
-        gameState.player2Hand = [...gameState.player2Hand, newCardCode];
+        gameState.player2Hand = [...gameState.player2Hand, newCard];
         await syncGameState({ player2Hand: gameState.player2Hand });
       }
     }
@@ -537,19 +530,19 @@
     }
     // Add the top card from the discard pile to the current player's hand
     if (gameState.discardPile.length > 0) {
-      const newCardCode =
+      const newCard =
         gameState.discardPile[gameState.discardPile.length - 1];
       // Remove the card from the discard pile
       // (slice(0, -1) copies everything except the last item)
       gameState.discardPile = gameState.discardPile.slice(0, -1);
       if (gameState.currentPlayer === "player1") {
-        gameState.player1Hand = [...gameState.player1Hand, newCardCode];
+        gameState.player1Hand = [...gameState.player1Hand, newCard];
         await syncGameState({
           player1Hand: gameState.player1Hand,
           discardPile: gameState.discardPile,
         });
       } else {
-        gameState.player2Hand = [...gameState.player2Hand, newCardCode];
+        gameState.player2Hand = [...gameState.player2Hand, newCard];
         await syncGameState({
           player2Hand: gameState.player2Hand,
           discardPile: gameState.discardPile,

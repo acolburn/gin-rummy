@@ -153,6 +153,8 @@ export function bestArrangement(hand) {
   // which explores every valid combination of non-overlapping melds. This is a
   // recursive function (it calls itself), moving on to the next meld each time.
   // chosenMelds is the list of melds picked so far on this path through the search
+  // For example, 3H-4H-5H and 4H-5H-6H are overlapping runs: both are possible
+  // melds, but they cannot both be chosen because they share 4H and 5H.
   function search(meldIndex, usedCards, chosenMelds) {
     // meldIndex is index of current meld being considered, usedCards is set of cards already used in previous melds
     if (meldIndex === melds.length) {

@@ -1,7 +1,6 @@
 TODO
 
 - If hand reaches end of deck, nothing happens
-- When player knocks or gins, knocking player should become dealer, and other player should become non-dealer
 
 ---
 
