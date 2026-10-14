@@ -48,8 +48,9 @@ function findMelds(hand) {
     if (cards.length === 3) {
       melds.push(cards);
     }
-    // if there's 4 cards, add each possible 3 card set as a meld
+    // if there's 4 cards, add each possible 3 card set as a meld (after adding the 4 card set as a meld)
     if (cards.length === 4) {
+      melds.push(cards); // Add the 4-card meld first
       for (let i = 0; i < cards.length; i++) {
         // skip the card at 0, add the other 3 as a meld; skp the card at 1, add the other 3 as a meld; etc.
         const temp = cards.filter((_, index) => index !== i);
