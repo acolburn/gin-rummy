@@ -1,35 +1,57 @@
 <script>
-  import { dndzone } from "svelte-dnd-action";
-  import { flip } from "svelte/animate";
-  import Card from "./Card.svelte";
-  import { auth, db } from "./firebase.js";
-  import { onMount } from "svelte";
-  import { signInAnonymously } from "firebase/auth";
-  import { doc, onSnapshot, setDoc } from "firebase/firestore";
-  import { toHandCard } from "./cards.js";
+  // ---------------------------------------------------------------------------
+  // OVERVIEW
+  // Two browsers share ONE game stored in a Firestore document ("games/gin-rummy").
+  // Whenever someone changes the game we (1) update our local `gameState` and
+  // (2) write the change to Firestore with syncGameState(). Firestore then
+  // notifies every browser (onSnapshot, in onMount below), and each browser
+  // copies the new data into its own `gameState`. Svelte re-draws the page
+  // automatically whenever a `$state` variable changes.
+  //
+  // Svelte 5 terms used in this file:
+  //   $state(x)    - a reactive variable: changing it updates the page
+  //   $derived(x)  - a value recalculated automatically when the $state it uses changes
+  //   $effect(fn)  - runs fn after the page updates and whenever its $state inputs change
+  // ---------------------------------------------------------------------------
+
+  // --- Imports: libraries and our own helper files ---
+  import { dndzone } from "svelte-dnd-action"; // drag-and-drop for reordering cards
+  import { flip } from "svelte/animate"; // smooth animation when cards move
+  import Card from "./Card.svelte"; // component that draws one card
+  import { auth, db } from "./firebase.js"; // our configured Firebase connections
+  import { onMount } from "svelte"; // runs code once when the page first loads
+  import { signInAnonymously } from "firebase/auth"; // log in without a username/password
+  import { doc, onSnapshot, setDoc } from "firebase/firestore"; // database functions
+  import { toHandCard } from "./cards.js"; // converts an API card into our card object
   // import { calculateDeadwood } from "./HandEvaluation.svelte";
   import {
-    bestDeadwood,
-    deadwoodAfterLayoff,
-    scoreHand,
+    bestDeadwood, // lowest possible deadwood total for a hand
+    deadwoodAfterLayoff, // opponent's deadwood after adding cards to knocker's melds
+    scoreHand, // works out who wins a hand and how many points
   } from "./EvaluateHand.js";
 
+  // The most recent raw document received from Firestore (undefined = no game yet)
   let gameSnapshotData = $state();
+  // Which seat this browser occupies: 1 (non-dealer), 2 (dealer), or undefined (spectator)
   let playerNumber = $state();
   // console.log(bestDeadwood(["3H", "4H", "5H", "5D", "5S", "5C", "2H", "JS"]));
 
   // Identify this browser with a simple random id stored locally, instead of
   // relying on Firebase Auth's uid (which was the source of the occasional
   // "stuck as spectator" bugs).
+  // localStorage is a small key/value store in the browser that survives page reloads.
   function getOrCreateMyId() {
     const storageKey = "ginRummyPlayerId";
-    let id = localStorage.getItem(storageKey);
+    let id = localStorage.getItem(storageKey); // null if we've never saved one
     if (!id) {
+      // Math.random() -> number; toString(36) -> letters+digits text;
+      // slice(2) drops the leading "0." so we keep only the random characters
       id = Math.random().toString(36).slice(2);
       localStorage.setItem(storageKey, id);
     }
     return id;
   }
+  // Our id for this browser, computed once when the page loads
   const myId = getOrCreateMyId();
 
   function doNothing() {
@@ -45,18 +67,26 @@
   // onMount means runs this after the component is loaded in the browser/DOM
   // Firebase still needs an authenticated (anonymous) user for Firestore access
   onMount(async () => {
+    // try/catch: if anything inside `try` throws an error, `catch` runs instead
+    // of the whole app crashing. `await` pauses until the async step finishes.
     try {
       await signInAnonymously(auth);
 
+      // A reference (pointer) to the one shared game document
       const gameRef = doc(db, "games", "gin-rummy");
 
+      // onSnapshot: Firestore calls the first function every time the document
+      // changes (and once right away with the current data). The second
+      // function (further below) is called if the listener fails.
       onSnapshot(
         gameRef,
         async (snapshot) => {
           firebaseError = ""; // listener is alive; clear any earlier error
           console.log("Firestore snapshot:", snapshot.data());
+          // The game is "real" only if the document exists AND has a deck
           if (snapshot.exists() && snapshot.data().deckId) {
             gameSnapshotData = snapshot.data();
+            // Remember the old value so we can tell below whether a knock just happened
             const previousKnockedByPlayerNumber =
               gameState.knockedByPlayerNumber;
 
@@ -70,6 +100,9 @@
               }
             });
 
+            // Show the knock popup only when the knock value CHANGED (so it
+            // appears for both players when someone knocks, and hides when
+            // it's reset to null).
             if (
               gameSnapshotData.knockedByPlayerNumber !== undefined &&
               gameSnapshotData.knockedByPlayerNumber !==
@@ -78,6 +111,7 @@
               showKnockModal = gameSnapshotData.knockedByPlayerNumber !== null;
             }
 
+            // Work out which seat (if any) belongs to this browser
             if (gameSnapshotData.player1 === myId) {
               playerNumber = 1;
             } else if (gameSnapshotData.player2 === myId) {
@@ -106,6 +140,7 @@
         },
       );
     } catch (error) {
+      // The /** @type */ comment only tells the editor that `error` may have a .code
       const e = /** @type {any} */ (error);
       console.error("Firebase error:", e);
       firebaseError = `Sign-in failed: ${e.code || e.message}. Enable anonymous auth in the Firebase console.`;
@@ -119,10 +154,14 @@
   // not exist yet, and updateDoc throws in that case, silently leaving the
   // player seat-less (which disables New Hand and ignores all taps).
   async function claimSeat(seatNumber) {
+    // Ternary: condition ? valueIfTrue : valueIfFalse
     const field = seatNumber === 1 ? "player1" : "player2";
     const gameRef = doc(db, "games", "gin-rummy");
 
     try {
+      // { [field]: myId } builds an object whose key is the VALUE of `field`,
+      // e.g. { player1: "abc123" }. merge:true changes only that key and leaves
+      // the rest of the document alone.
       await setDoc(gameRef, { [field]: myId }, { merge: true });
     } catch (error) {
       const e = /** @type {any} */ (error);
@@ -137,15 +176,17 @@
   // deleted) can be bootstrapped again.
   function claimBootstrap() {
     const lockKey = "ginRummyBootstrapLock";
-    const now = Date.now();
+    const now = Date.now(); // current time in milliseconds
+    // Returns true if THIS tab may create the deck, false if another already is.
     try {
-      const raw = localStorage.getItem(lockKey);
+      const raw = localStorage.getItem(lockKey); // localStorage only stores text
       if (raw) {
-        const lock = JSON.parse(raw);
+        const lock = JSON.parse(raw); // text -> object, e.g. { time: 1700000000000 }
         if (now - lock.time < 15000) {
           return false; // Another tab is already creating the deck
         }
       }
+      // No lock, or it's older than 15 seconds: take the lock (object -> text)
       localStorage.setItem(lockKey, JSON.stringify({ time: now }));
       return true;
     } catch {
@@ -161,6 +202,8 @@
   // Uses setDoc + merge (not updateDoc) so this also works the first time,
   // when the game doc doesn't exist yet (e.g. makeDeck's bootstrap call).
   /** @param {Partial<typeof gameState>} fields */
+  // `fields = { ...gameState }` is a default value: if no argument is passed,
+  // `{ ...gameState }` copies every property of gameState into a new object.
   async function syncGameState(fields = { ...gameState }) {
     const gameRef = doc(db, "games", "gin-rummy");
 
@@ -190,6 +233,7 @@
     player2Score: 0,
   });
   // Am I allowed to act right now? (i.e., is it my turn?)
+  // Recalculates automatically whenever playerNumber or currentPlayer changes.
   let isMyTurn = $derived(
     (playerNumber === 1 && gameState.currentPlayer === "player1") ||
       (playerNumber === 2 && gameState.currentPlayer === "player2"),
@@ -204,18 +248,22 @@
   // keys unique so one bad document can never brick the app.
   /** @param {any[]} hand */
   function uniqueKeys(hand) {
+    // `seen` is a Map (key -> value) counting how many times each card id appeared
     const seen = new Map();
+    // map() builds a new array with one key per card, in the same order
     return hand.map((card) => {
-      const count = seen.get(card.id) || 0;
+      const count = seen.get(card.id) || 0; // 0 if this id hasn't been seen
       seen.set(card.id, count + 1);
+      // first time: the plain id; repeats: id + "#dup1", "#dup2", ...
       return count === 0 ? card.id : `${card.id}#dup${count}`;
     });
   }
   let player1Keys = $derived(uniqueKeys(gameState.player1Hand));
   let player2Keys = $derived(uniqueKeys(gameState.player2Hand));
 
-  let showKnockModal = $state(false);
-  let knockModalRef;
+  // --- Knock popup (modal) and end-of-hand scoring ---
+  let showKnockModal = $state(false); // is the popup open?
+  let knockModalRef; // points at the <dialog> element (set via bind:this in the markup)
   // The player who discarded (the current player) is the one knocking
   let knockingPlayerNumber = $derived(
     gameState.currentPlayer === "player1" ? 1 : 2,
@@ -225,6 +273,7 @@
       ? gameState.player1Hand
       : gameState.player2Hand,
   );
+  // The player who did NOT knock
   let opponentHand = $derived(
     gameState.currentPlayer === "player1"
       ? gameState.player2Hand
@@ -232,10 +281,13 @@
   );
   // Opponent's deadwood after laying off cards onto the knocker's melds
   let layoff = $derived(deadwoodAfterLayoff(knockingHand, opponentHand));
+  // Result of the hand: { winner: "knocker"|"opponent", points, result: "gin"|"knock"|"undercut" }
   let handScore = $derived(
     scoreHand(bestDeadwood(knockingHand), layoff.deadwood),
   );
-  // Which player ("player1"/"player2") wins this hand's points
+  // Which player ("player1"/"player2") wins this hand's points.
+  // handScore only says "knocker" or "opponent", so translate that into a player:
+  // the knocker is currentPlayer; the opponent is the other one.
   let handWinner = $derived(
     handScore.winner === "knocker"
       ? gameState.currentPlayer
@@ -245,6 +297,7 @@
   );
 
   // Open/close the knock modal when showKnockModal changes
+  // (showModal()/close() are built-in methods of the HTML <dialog> element.)
   $effect(() => {
     if (knockModalRef) {
       if (showKnockModal) {
@@ -257,6 +310,12 @@
 
   const flipDurationMs = 200; // Duration of the flip animation in milliseconds
   let isDragging = $state(false); // Track whether a card is being dragged
+
+  // --- Drag and drop (svelte-dnd-action) ---
+  // The library fires two events: "consider" (continuously while a card is being
+  // dragged around; just update the preview order) and "finalize" (the card was
+  // dropped; this is the final order, so save it). event.detail.items is the
+  // hand in its new order.
 
   // current player can drag and drop cards in their hand
   function handleDndConsider(event) {
@@ -286,6 +345,8 @@
     }, 50);
   }
 
+  // Ends the current player's turn: close the popup, hand the turn to the
+  // other player, reset knock info, and save it all to Firestore.
   async function switchPlayer() {
     showKnockModal = false;
     gameState.currentPlayer =
@@ -299,6 +360,9 @@
     });
   }
 
+  // Records that a player knocked. Saving it to Firestore makes the snapshot
+  // listener open the knock popup in BOTH browsers.
+  // (This parameter shadows the outer playerNumber variable on purpose.)
   async function announceKnock(playerNumber) {
     showKnockModal = true;
     gameState.knockedByPlayerNumber = playerNumber;
@@ -316,8 +380,8 @@
       "https://deckofcardsapi.com/api/deck/new/shuffle/",
       // "https://deckofcardsapi.com/api/deck/new/",
     );
-    const data = await response.json();
-    gameState.deckId = data.deck_id;
+    const data = await response.json(); // response body (text) -> JavaScript object
+    gameState.deckId = data.deck_id; // the API gives us an id we use for later draws
     if (sync) {
       await syncGameState({ deckId: gameState.deckId }); // Sync the new deckId with Firestore
     }
@@ -326,13 +390,16 @@
   // Adds this hand's points to the winner's total, then deals a new hand.
   // Only called from the knock modal, so ordinary New Hand clicks don't score.
   async function scoreAndNewHand() {
+    // Pick which score field to update; gameState[scoreField] looks up a
+    // property by a name stored in a variable
     const scoreField = handWinner === "player1" ? "player1Score" : "player2Score";
-    gameState[scoreField] += handScore.points;
+    gameState[scoreField] += handScore.points; // += means "add to the current value"
     await syncGameState({ [scoreField]: gameState[scoreField] });
     await newHand();
   }
 
-  // makes deck, assigns deckId used throughout the JavaScript
+  // Starts a fresh hand: new shuffled deck, 10 cards to each player, one card
+  // face-up to start the discard pile, then saves everything at once.
   async function newHand() {
     showKnockModal = false;
     // Reshuffle the deck and reset hands and discard pile
@@ -355,6 +422,7 @@
     );
     // Parse the response and update playerHand with the drawn cards
     const drawData = await drawResponse.json();
+    // map runs toHandCard on each API card, producing our own card objects
     gameState.player1Hand = drawData.cards.map((card) => toHandCard(card));
     // Repeat for opponentHand
     const opponentDrawResponse = await fetch(
@@ -383,7 +451,8 @@
     });
   }
 
-  // draw one card from the deck
+  // Asks the API for one card from the deck. Returns our card object, or null
+  // (after an alert) if the deck is empty. Does NOT change any hand itself.
   async function drawCard() {
     const drawResponse = await fetch(
       `https://deckofcardsapi.com/api/deck/${gameState.deckId}/draw/?count=1`,
@@ -397,7 +466,9 @@
     }
   }
 
-  // Get a card from the deck and add it to the current player's hand
+  // Click handler for the deck: get a card from the deck and add it to the
+  // current player's hand. A hand has 10 cards normally and 11 right after
+  // drawing, so more than 10 means you already drew this turn.
   async function addCardToHandFromDeck() {
     if (!isMyTurn) {
       return; // Ignore the click event if it's not the player's turn
@@ -416,8 +487,10 @@
       alert("Your hand is full. Cannot draw more cards.");
       return;
     }
-    const newCardCode = await drawCard();
+    const newCardCode = await drawCard(); // a card object (despite the name) or null
     if (newCardCode) {
+      // [...hand, card] makes a NEW array with the card on the end; assigning a
+      // new array (rather than push) is what makes Svelte notice the change
       if (gameState.currentPlayer === "player1") {
         gameState.player1Hand = [...gameState.player1Hand, newCardCode];
         await syncGameState({ player1Hand: gameState.player1Hand });
@@ -428,6 +501,7 @@
     }
   }
 
+  // Click handler for the discard pile: take the top (last) card into your hand.
   async function addCardToHandFromDiscardPile() {
     if (!isMyTurn) {
       return; // Ignore the click event if it's not the player's turn
@@ -451,6 +525,7 @@
       const newCardCode =
         gameState.discardPile[gameState.discardPile.length - 1];
       // Remove the card from the discard pile
+      // (slice(0, -1) copies everything except the last item)
       gameState.discardPile = gameState.discardPile.slice(0, -1);
       if (gameState.currentPlayer === "player1") {
         gameState.player1Hand = [...gameState.player1Hand, newCardCode];
@@ -470,6 +545,9 @@
     }
   }
 
+  // Click handler for a card in a hand: discard it. After discarding, if the
+  // player's deadwood is 10 or less they may knock (turn stays with them so
+  // they can choose); otherwise the turn passes to the other player.
   async function discardCard(card) {
     if (!isMyTurn) {
       return; // Ignore the click event if it's not the player's turn
@@ -493,7 +571,8 @@
       return;
     }
     // Only allow discarding a card from the hand whose turn it actually is,
-    // regardless of which hand the click event happened to come from
+    // regardless of which hand the click event happened to come from.
+    // some() is true if at least one card in the hand has a matching id.
     const isFromCurrentPlayerHand =
       gameState.currentPlayer === "player1"
         ? gameState.player1Hand.some((c) => c.id === card.id)
@@ -504,10 +583,11 @@
     // Remove the card from the current player's hand
     const handField =
       gameState.currentPlayer === "player1" ? "player1Hand" : "player2Hand";
+    // filter keeps every card EXCEPT the one with the discarded card's id
     gameState[handField] = gameState[handField].filter((c) => c.id !== card.id);
     // Add the card to the discard pile
     gameState.discardPile = [...gameState.discardPile, card];
-    // Calculate the deadwood for the current player
+    // Calculate the deadwood for the current player (knocking requires <= 10)
     // gameState.canKnock = calculateDeadwood(gameState[handField]) <= 10;
     gameState.canKnock = bestDeadwood(gameState[handField]) <= 10;
     await syncGameState({

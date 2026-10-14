@@ -1,3 +1,5 @@
+<!-- NOTE: THIS FILE IS NOT USED IN THE CURRENT VERSION OF THE APP. IT IS KEPT FOR REFERENCE PURPOSES ONLY. -->
+
 <!-- All melds are at the beginning, runs are ascending, Deadwood is at the end, The player 
  has already chosen the arrangement. We can simply walk through the hand 
  from left to right. As long as the cards form melds, we keep 
