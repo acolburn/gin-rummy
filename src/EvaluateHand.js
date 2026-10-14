@@ -106,22 +106,34 @@ function addRunSubsets(run, melds) {
 }
 
 export function bestDeadwood(hand) {
+  return bestArrangement(hand).deadwood;
+}
+
+// Like bestDeadwood, but also returns which melds and leftover cards give that lowest score.
+// Returns { melds: [[card, ...], ...], deadwoodCards: [card, ...], deadwood: number }
+export function bestArrangement(hand) {
   const melds = findMelds(hand); // all possible melds in the hand
   let lowestScore = Infinity;
+  let bestMelds = []; // the melds used in the best arrangement found so far
 
-  function search(meldIndex, usedCards) {
+  // chosenMelds is the list of melds picked so far on this path through the search
+  function search(meldIndex, usedCards, chosenMelds) {
     // meldIndex is index of current meld being considered, usedCards is set of cards already used in previous melds
     if (meldIndex === melds.length) {
       // we've considered all melds
       const deadwood = hand // start with whole hand
         .filter((card) => !usedCards.has(card)) // remove cards that are in melds
         .reduce((total, card) => total + deadwoodValue(card), 0); // sum up values of remaining cards
-      lowestScore = Math.min(lowestScore, deadwood); // update lowest score if this is lower
+      // only a strictly lower score replaces the best, so on ties the first arrangement found is kept
+      if (deadwood < lowestScore) {
+        lowestScore = deadwood;
+        bestMelds = chosenMelds;
+      }
       return;
     }
 
     // choice 1:skip the current meld
-    search(meldIndex + 1, usedCards);
+    search(meldIndex + 1, usedCards, chosenMelds);
 
     // Choice 2: use this meld, if it doesn't overlap.
     const meld = melds[meldIndex];
@@ -134,9 +146,13 @@ export function bestDeadwood(hand) {
         nextUsedCards.add(card);
       }
 
-      search(meldIndex + 1, nextUsedCards);
+      // [...chosenMelds, meld] makes a new array, so other paths aren't affected
+      search(meldIndex + 1, nextUsedCards, [...chosenMelds, meld]);
     }
   } // end search
-  search(0, new Set());
-  return lowestScore;
-} // end bestDeadwood
+  search(0, new Set(), []);
+
+  const meldedCards = new Set(bestMelds.flat());
+  const deadwoodCards = hand.filter((card) => !meldedCards.has(card));
+  return { melds: bestMelds, deadwoodCards, deadwood: lowestScore };
+} // end bestArrangement
