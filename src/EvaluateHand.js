@@ -156,3 +156,56 @@ export function bestArrangement(hand) {
   const deadwoodCards = hand.filter((card) => !meldedCards.has(card));
   return { melds: bestMelds, deadwoodCards, deadwood: lowestScore };
 } // end bestArrangement
+
+// A meld is a set if all its cards share a rank; otherwise it's a run.
+function isSet(meld) {
+  return meld.every((card) => rankOf(card) === rankOf(meld[0]));
+}
+
+// Can this card be added to this meld?
+function fitsMeld(card, meld) {
+  if (isSet(meld)) {
+    // a set holds at most 4 cards
+    return meld.length < 4 && rankOf(card) === rankOf(meld[0]);
+  }
+  if (suitOf(card) !== suitOf(meld[0])) return false;
+  const ranks = meld.map(rankOf);
+  // a run can grow one rank below its lowest card or one above its highest
+  return (
+    rankOf(card) === Math.min(...ranks) - 1 ||
+    rankOf(card) === Math.max(...ranks) + 1
+  );
+}
+
+// After a knock, the opponent lays off deadwood cards onto the knocker's melds.
+// No lay-off is allowed when the knocker has gin (0 deadwood).
+// Returns { deadwood: number, laidOff: [card, ...], remaining: [card, ...] }
+export function deadwoodAfterLayoff(knockerHand, opponentHand) {
+  const knocker = bestArrangement(knockerHand);
+  const opponent = bestArrangement(opponentHand);
+  let remaining = [...opponent.deadwoodCards];
+  const laidOff = [];
+
+  if (knocker.deadwood > 0) {
+    // copy the melds so the knocker's real melds aren't changed
+    const melds = knocker.melds.map((meld) => [...meld]);
+    let changed = true;
+    // a laid-off card can make room for another, so repeat until nothing fits
+    while (changed) {
+      changed = false;
+      for (const card of remaining) {
+        const meld = melds.find((m) => fitsMeld(card, m));
+        if (meld) {
+          meld.push(card);
+          laidOff.push(card);
+          remaining = remaining.filter((c) => c !== card);
+          changed = true;
+          break; // remaining changed, so start the pass again
+        }
+      }
+    }
+  }
+
+  const deadwood = remaining.reduce((t, card) => t + deadwoodValue(card), 0);
+  return { deadwood, laidOff, remaining };
+}
