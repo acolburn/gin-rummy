@@ -392,15 +392,12 @@
     const scoreField = handWinner === "player1" ? "player1Score" : "player2Score";
     gameState[scoreField] += handScore.points; // += means "add to the current value"
     await syncGameState({ [scoreField]: gameState[scoreField] });
-    const nextPlayer = handWinner === "player1" ? "player2" : "player1";
-    await newHand(false, nextPlayer);
+    await startNextHand();
   }
 
-  // Starts a fresh hand: new shuffled deck, 10 cards to each player, one card
-  // face-up to start the discard pile, then saves everything at once. By
-  // default player1 starts; after a scored hand, the player who did not score
-  // starts instead.
-  async function newHand(resetScores = false, startingPlayer = "player1") {
+  // Deals a fresh hand and saves it to Firestore. The options make it clear
+  // whether this also resets scores and which player starts.
+  async function dealHand({ resetScores, startingPlayer }) {
     showKnockModal = false;
     // MUST be awaited: otherwise the draws below use the OLD deckId while the
     // NEW deckId gets synced to Firestore, so future draws come from a full
@@ -454,9 +451,20 @@
     });
   }
 
+  // Starts an ordinary new hand with player 1 going first; scores are kept.
+  async function startNewHand() {
+    await dealHand({ resetScores: false, startingPlayer: "player1" });
+  }
+
+  // Starts the next hand after scoring; the player who did not win starts.
+  async function startNextHand() {
+    const startingPlayer = handWinner === "player1" ? "player2" : "player1";
+    await dealHand({ resetScores: false, startingPlayer });
+  }
+
   // Starts a new game with a fresh deal and resets both players' scores.
-  async function newGame() {
-    await newHand(true);
+  async function startNewGame() {
+    await dealHand({ resetScores: true, startingPlayer: "player1" });
   }
 
   // Asks the API for one card from the deck. Returns our card object, or null
@@ -764,12 +772,12 @@
       <button
         class="btn-primary"
         disabled={playerNumber !== 2}
-        onclick={() => newHand()}>New Hand</button
+        onclick={startNewHand}>New Hand</button
       >
       <button
         class="btn-continue"
         disabled={playerNumber !== 2}
-        onclick={newGame}>New Game</button
+        onclick={startNewGame}>New Game</button
       >
     </div>
     <!-- End Display hand controls -->
