@@ -8,7 +8,11 @@
   import { doc, onSnapshot, setDoc } from "firebase/firestore";
   import { toHandCard } from "./cards.js";
   // import { calculateDeadwood } from "./HandEvaluation.svelte";
-  import { bestDeadwood, deadwoodAfterLayoff } from "./EvaluateHand.js";
+  import {
+    bestDeadwood,
+    deadwoodAfterLayoff,
+    scoreHand,
+  } from "./EvaluateHand.js";
 
   let gameSnapshotData = $state();
   let playerNumber = $state();
@@ -182,6 +186,8 @@
     currentPlayer: "player1", // "player1" or "player2"
     canKnock: false, // Whether the current player can knock (i.e., has 10 or fewer deadwood points)
     knockedByPlayerNumber: null,
+    player1Score: 0,
+    player2Score: 0,
   });
   // Am I allowed to act right now? (i.e., is it my turn?)
   let isMyTurn = $derived(
@@ -226,6 +232,17 @@
   );
   // Opponent's deadwood after laying off cards onto the knocker's melds
   let layoff = $derived(deadwoodAfterLayoff(knockingHand, opponentHand));
+  let handScore = $derived(
+    scoreHand(bestDeadwood(knockingHand), layoff.deadwood),
+  );
+  // Which player ("player1"/"player2") wins this hand's points
+  let handWinner = $derived(
+    handScore.winner === "knocker"
+      ? gameState.currentPlayer
+      : gameState.currentPlayer === "player1"
+        ? "player2"
+        : "player1",
+  );
 
   // Open/close the knock modal when showKnockModal changes
   $effect(() => {
@@ -304,6 +321,15 @@
     if (sync) {
       await syncGameState({ deckId: gameState.deckId }); // Sync the new deckId with Firestore
     }
+  }
+
+  // Adds this hand's points to the winner's total, then deals a new hand.
+  // Only called from the knock modal, so ordinary New Hand clicks don't score.
+  async function scoreAndNewHand() {
+    const scoreField = handWinner === "player1" ? "player1Score" : "player2Score";
+    gameState[scoreField] += handScore.points;
+    await syncGameState({ [scoreField]: gameState[scoreField] });
+    await newHand();
   }
 
   // makes deck, assigns deckId used throughout the JavaScript
@@ -512,6 +538,9 @@
         <span class="status-dot red"></span>Waiting for opponent
       {/if}
     </p>
+    <p class="status">
+      P1: {gameState.player1Score} &nbsp; P2: {gameState.player2Score}
+    </p>
     <div class="seat-buttons">
       <button class="btn-continue" onclick={() => claimSeat(1)}
         >Non-Dealer</button
@@ -682,9 +711,15 @@
       {/if}
       Opponent has {layoff.deadwood} points in their hand. That's a difference
       of {layoff.deadwood - bestDeadwood(knockingHand)} points.
-      {#if layoff.deadwood <= bestDeadwood(knockingHand)}
+      {#if handScore.result === "undercut"}
         The opponent has undercut the knocking player.
       {/if}
+    </p>
+    <p>
+      <strong
+        >{handWinner === "player1" ? "Player 1" : "Player 2"} scores {handScore.points}
+        points.</strong
+      >
     </p>
     <footer>
       <!-- Seat-gated like the main New Hand button: if both players deal at
@@ -692,7 +727,7 @@
       <button
         class="btn-primary"
         disabled={playerNumber !== knockingPlayerNumber}
-        onclick={newHand}>New Hand</button
+        onclick={scoreAndNewHand}>New Hand</button
       >
       <button class="btn-continue" onclick={() => (showKnockModal = false)}
         >Cancel</button

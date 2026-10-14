@@ -209,3 +209,31 @@ export function deadwoodAfterLayoff(knockerHand, opponentHand) {
   const deadwood = remaining.reduce((t, card) => t + deadwoodValue(card), 0);
   return { deadwood, laidOff, remaining };
 }
+
+const GIN_BONUS = 25;
+const UNDERCUT_BONUS = 25;
+
+// Scores a finished hand. Both arguments are deadwood point totals; the
+// opponent's should already have lay-offs applied.
+// Returns { winner: "knocker" | "opponent", points: number, result: "gin" | "knock" | "undercut" }
+export function scoreHand(knockerDeadwood, opponentDeadwood) {
+  if (knockerDeadwood === 0) {
+    return {
+      winner: "knocker",
+      points: GIN_BONUS + opponentDeadwood,
+      result: "gin",
+    };
+  }
+  if (opponentDeadwood <= knockerDeadwood) {
+    return {
+      winner: "opponent",
+      points: UNDERCUT_BONUS + (knockerDeadwood - opponentDeadwood),
+      result: "undercut",
+    };
+  }
+  return {
+    winner: "knocker",
+    points: opponentDeadwood - knockerDeadwood,
+    result: "knock",
+  };
+}
