@@ -8,7 +8,7 @@
   import { doc, onSnapshot, setDoc } from "firebase/firestore";
   import { toHandCard } from "./cards.js";
   // import { calculateDeadwood } from "./HandEvaluation.svelte";
-  import { bestDeadwood } from "./EvaluateHand.js";
+  import { bestDeadwood, deadwoodAfterLayoff } from "./EvaluateHand.js";
 
   let gameSnapshotData = $state();
   let playerNumber = $state();
@@ -224,6 +224,8 @@
       ? gameState.player2Hand
       : gameState.player1Hand,
   );
+  // Opponent's deadwood after laying off cards onto the knocker's melds
+  let layoff = $derived(deadwoodAfterLayoff(knockingHand, opponentHand));
 
   // Open/close the knock modal when showKnockModal changes
   $effect(() => {
@@ -674,9 +676,13 @@
     </header>
     <p>Well done!</p>
     <p>
-      Opponent has {bestDeadwood(opponentHand)} points in their hand. That's a difference
-      of {bestDeadwood(opponentHand) - bestDeadwood(knockingHand)} points.
-      {#if bestDeadwood(opponentHand) <= bestDeadwood(knockingHand)}
+      {#if layoff.laidOff.length > 0}
+        Opponent laid off {layoff.laidOff.length}
+        {layoff.laidOff.length === 1 ? "card" : "cards"}.
+      {/if}
+      Opponent has {layoff.deadwood} points in their hand. That's a difference
+      of {layoff.deadwood - bestDeadwood(knockingHand)} points.
+      {#if layoff.deadwood <= bestDeadwood(knockingHand)}
         The opponent has undercut the knocking player.
       {/if}
     </p>
