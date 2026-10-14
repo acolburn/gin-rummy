@@ -2,7 +2,6 @@ TODO
 
 - If hand reaches end of deck, nothing happens
 - When player knocks or gins, knocking player should become dealer, and other player should become non-dealer
-- Need new game button, resetting scores to 0
 
 ---
 
@@ -37,10 +36,14 @@ Instead, **both browsers read and write a single Firestore document**:
 3. **Sync helpers** — `claimSeat`, `syncGameState`, `claimBootstrap`.
 4. **`gameState` and derived state** — the shared data object.
 5. **Drag-and-drop handlers** — rearranging cards in your hand.
-6. **Game actions** — `makeDeck`, `newHand`, `drawCard`, `addCardToHandFromDeck`,
-   `addCardToHandFromDiscardPile`, `discardCard`, `switchPlayer`.
+6. **Game actions** — `makeDeck`, `newHand`, `newGame`, `drawCard`,
+   `addCardToHandFromDeck`, `addCardToHandFromDiscardPile`, `discardCard`,
+   `switchPlayer`.
 7. **Markup (HTML)** — opponent hand, deck/discard piles, your hand, knock modal.
 8. **Styles (CSS)** — purely visual; safe to change.
+
+The Dealer can start a **New Game** to deal a fresh hand and reset both players'
+scores to zero. The reset is synced with the new deal.
 
 ## Identity and seats
 

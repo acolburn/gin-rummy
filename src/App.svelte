@@ -400,7 +400,7 @@
 
   // Starts a fresh hand: new shuffled deck, 10 cards to each player, one card
   // face-up to start the discard pile, then saves everything at once.
-  async function newHand() {
+  async function newHand(resetScores = false) {
     showKnockModal = false;
     // Reshuffle the deck and reset hands and discard pile
     // const reshuffleDeck = await fetch(
@@ -438,8 +438,13 @@
     );
     const discardData = await discardResponse.json();
     gameState.discardPile = discardData.cards.map((card) => toHandCard(card));
+    if (resetScores) {
+      gameState.player1Score = 0;
+      gameState.player2Score = 0;
+    }
     // Sync deckId together with the dealt cards so no client ever holds the
-    // new deckId while the old hands/discard are still visible.
+    // new deckId while the old hands/discard are still visible. A new game
+    // resets both scores in the same shared update as the fresh deal.
     await syncGameState({
       deckId: gameState.deckId,
       player1Hand: gameState.player1Hand,
@@ -448,7 +453,13 @@
       canKnock: gameState.canKnock,
       knockedByPlayerNumber: gameState.knockedByPlayerNumber,
       currentPlayer: "player1", // Reset to player1 (non-dealer) turn for the new hand
+      ...(resetScores ? { player1Score: 0, player2Score: 0 } : {}),
     });
+  }
+
+  // Starts a new game with a fresh deal and resets both players' scores.
+  async function newGame() {
+    await newHand(true);
   }
 
   // Asks the API for one card from the deck. Returns our card object, or null
@@ -756,10 +767,15 @@
       <button
         class="btn-primary"
         disabled={playerNumber !== 2}
-        onclick={newHand}>New Hand</button
+        onclick={() => newHand()}>New Hand</button
+      >
+      <button
+        class="btn-continue"
+        disabled={playerNumber !== 2}
+        onclick={newGame}>New Game</button
       >
     </div>
-    <!-- End Display new hand button -->
+    <!-- End Display hand controls -->
   </section>
   <!-- End Display player hand -->
 </div>
@@ -962,6 +978,8 @@
   }
 
   .controls {
+    display: flex;
+    gap: 0.6rem;
     margin-top: 0.15rem;
   }
 
