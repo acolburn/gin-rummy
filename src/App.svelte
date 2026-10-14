@@ -395,12 +395,15 @@
     const scoreField = handWinner === "player1" ? "player1Score" : "player2Score";
     gameState[scoreField] += handScore.points; // += means "add to the current value"
     await syncGameState({ [scoreField]: gameState[scoreField] });
-    await newHand();
+    const nextPlayer = handWinner === "player1" ? "player2" : "player1";
+    await newHand(false, nextPlayer);
   }
 
   // Starts a fresh hand: new shuffled deck, 10 cards to each player, one card
-  // face-up to start the discard pile, then saves everything at once.
-  async function newHand(resetScores = false) {
+  // face-up to start the discard pile, then saves everything at once. By
+  // default player1 starts; after a scored hand, the player who did not score
+  // starts instead.
+  async function newHand(resetScores = false, startingPlayer = "player1") {
     showKnockModal = false;
     // Reshuffle the deck and reset hands and discard pile
     // const reshuffleDeck = await fetch(
@@ -442,6 +445,7 @@
       gameState.player1Score = 0;
       gameState.player2Score = 0;
     }
+    gameState.currentPlayer = startingPlayer;
     // Sync deckId together with the dealt cards so no client ever holds the
     // new deckId while the old hands/discard are still visible. A new game
     // resets both scores in the same shared update as the fresh deal.
@@ -452,7 +456,7 @@
       discardPile: gameState.discardPile,
       canKnock: gameState.canKnock,
       knockedByPlayerNumber: gameState.knockedByPlayerNumber,
-      currentPlayer: "player1", // Reset to player1 (non-dealer) turn for the new hand
+      currentPlayer: gameState.currentPlayer,
       ...(resetScores ? { player1Score: 0, player2Score: 0 } : {}),
     });
   }
