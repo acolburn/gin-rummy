@@ -194,8 +194,9 @@ first deck also has to create the Firestore doc.
    other player.
 3. **Always `await makeDeck()` before drawing** — see above.
 4. **`deckId`, hands, and discard pile are one atomic unit** — sync them together.
-5. **Only the Dealer deals** — both "New Hand" buttons are disabled unless
-   `playerNumber === 2`, so two players can't deal simultaneously and mix two decks.
+5. **Only seated players can deal a hand** — the ordinary "New Hand" button is
+   enabled for either player; the knock-result button is enabled only for the
+   player who knocked.
 6. **Don't reset `canKnock` at call sites** — `switchPlayer()` owns that.
 7. **Firestore values must be plain JSON** — no class instances, functions, or Dates in
    `gameState`.

@@ -797,7 +797,7 @@
     <div class="controls">
       <button
         class="btn-primary"
-        disabled={playerNumber !== 2}
+        disabled={playerNumber !== 1 && playerNumber !== 2}
         onclick={startNewHand}>New Hand</button
       >
     </div>
