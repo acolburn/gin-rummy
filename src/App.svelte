@@ -34,6 +34,7 @@
   // Which seat this browser occupies: 1 (non-dealer), 2 (dealer), or undefined (spectator)
   let playerNumber = $state();
 
+  // ---------------------------------------------------------------------------
   // Identify this browser with a simple random id stored locally, instead of
   // relying on Firebase Auth's uid (which was the source of the occasional
   // "stuck as spectator" bugs).
@@ -62,6 +63,7 @@
   // unresponsive buttons) with no hint why.
   let firebaseError = $state("");
 
+  // ---------------------------------------------------------------------------
   // onMount means runs this after the component is loaded in the browser/DOM
   // Firebase still needs an authenticated (anonymous) user for Firestore access
   onMount(async () => {
@@ -168,6 +170,7 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
   // Cross-tab guard so only one browser bootstraps the deck when the game
   // doc is missing. The lock auto-expires so a crashed tab can't wedge the
   // game, and is keyed by an epoch so a brand-new game (after the doc is
@@ -194,6 +197,7 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
   // Sync only the given fields to Firestore (defaults to the full gameState).
   // Scoping updates to just what changed avoids one client's stale local copy
   // of unrelated fields clobbering another client's concurrent changes.
@@ -236,6 +240,7 @@
       (playerNumber === 2 && gameState.currentPlayer === "player2"),
   );
 
+  // ---------------------------------------------------------------------------
   // Keys for the keyed {#each} blocks that render the hands. Normally each
   // card id is unique, so the key is just the id (which lets Svelte animate
   // reorders instead of remounting cards). But if Firestore data ever gets
@@ -314,11 +319,13 @@
   // dropped; this is the final order, so save it). event.detail.items is the
   // hand in its new order.
 
+  // ---------------------------------------------------------------------------
   // current player can drag and drop cards in their hand
   function handleDndConsider(event) {
     isDragging = true; //player started dragging a card, so ignore the click event that will fire when they release the card
     gameState.player1Hand = event.detail.items;
   }
+  // ---------------------------------------------------------------------------
   function handleDndFinalize(event) {
     gameState.player1Hand = event.detail.items;
     syncGameState({ player1Hand: gameState.player1Hand });
@@ -328,11 +335,14 @@
     }, 50);
   }
 
+  // ---------------------------------------------------------------------------
   // opponent player can drag and drop cards in their hand
   function handleOpponentDndConsider(event) {
     isDragging = true; //opponent started dragging a card, so ignore the click event that will fire when they release the card
     gameState.player2Hand = event.detail.items;
   }
+
+  // ---------------------------------------------------------------------------
   function handleOpponentDndFinalize(event) {
     gameState.player2Hand = event.detail.items;
     syncGameState({ player2Hand: gameState.player2Hand });
@@ -342,6 +352,7 @@
     }, 50);
   }
 
+  // ---------------------------------------------------------------------------
   // Ends the current player's turn: close the popup, hand the turn to the
   // other player, reset knock info, and save it all to Firestore.
   async function switchPlayer() {
@@ -357,6 +368,7 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
   // Records that a player knocked. Saving it to Firestore makes the snapshot
   // listener open the knock popup in BOTH browsers.
   // (This parameter shadows the outer playerNumber variable on purpose.)
@@ -368,6 +380,7 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
   // Creates a fresh shuffled deck. When sync is false, the caller is
   // responsible for syncing deckId (newHand does this atomically together
   // with the dealt hands, so no client ever sees a new deckId with old cards).
@@ -384,17 +397,20 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
   // Adds this hand's points to the winner's total, then deals a new hand.
   // Only called from the knock modal, so ordinary New Hand clicks don't score.
   async function scoreAndNewHand() {
     // Pick which score field to update; gameState[scoreField] looks up a
     // property by a name stored in a variable
-    const scoreField = handWinner === "player1" ? "player1Score" : "player2Score";
+    const scoreField =
+      handWinner === "player1" ? "player1Score" : "player2Score";
     gameState[scoreField] += handScore.points; // += means "add to the current value"
     await syncGameState({ [scoreField]: gameState[scoreField] });
     await startNextHand();
   }
 
+  // ---------------------------------------------------------------------------
   // Deals a fresh hand and saves it to Firestore. The options make it clear
   // whether this also resets scores and which player starts.
   async function dealHand({ resetScores, startingPlayer }) {
@@ -451,22 +467,26 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
   // Starts an ordinary new hand with player 1 going first; scores are kept.
   async function startNewHand() {
     await dealHand({ resetScores: false, startingPlayer: "player1" });
   }
 
+  // ---------------------------------------------------------------------------
   // Starts the next hand after scoring; the player who did not win starts.
   async function startNextHand() {
     const startingPlayer = handWinner === "player1" ? "player2" : "player1";
     await dealHand({ resetScores: false, startingPlayer });
   }
 
+  // ---------------------------------------------------------------------------
   // Starts a new game with a fresh deal and resets both players' scores.
   async function startNewGame() {
     await dealHand({ resetScores: true, startingPlayer: "player1" });
   }
 
+  // ---------------------------------------------------------------------------
   // Asks the API for one card from the deck. Returns our card object, or null
   // (after an alert) if the deck is empty. Does NOT change any hand itself.
   async function drawCard() {
@@ -482,6 +502,7 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
   // Click handler for the deck: get a card from the deck and add it to the
   // current player's hand. A hand has 10 cards normally and 11 right after
   // drawing, so more than 10 means you already drew this turn.
@@ -517,6 +538,7 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
   // Click handler for the discard pile: take the top (last) card into your hand.
   async function addCardToHandFromDiscardPile() {
     if (!isMyTurn) {
@@ -538,8 +560,7 @@
     }
     // Add the top card from the discard pile to the current player's hand
     if (gameState.discardPile.length > 0) {
-      const newCard =
-        gameState.discardPile[gameState.discardPile.length - 1];
+      const newCard = gameState.discardPile[gameState.discardPile.length - 1];
       // Remove the card from the discard pile
       // (slice(0, -1) copies everything except the last item)
       gameState.discardPile = gameState.discardPile.slice(0, -1);
@@ -561,6 +582,7 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
   // Click handler for a card in a hand: discard it. After discarding, if the
   // player's deadwood is 10 or less they may knock (turn stays with them so
   // they can choose); otherwise the turn passes to the other player.
@@ -810,8 +832,8 @@
         Opponent laid off {layoff.laidOff.length}
         {layoff.laidOff.length === 1 ? "card" : "cards"}.
       {/if}
-      Opponent has {layoff.deadwood} points in their hand. That's a difference
-      of {layoff.deadwood - bestDeadwood(knockingHand)} points.
+      Opponent has {layoff.deadwood} points in their hand. That's a difference of
+      {layoff.deadwood - bestDeadwood(knockingHand)} points.
       {#if handScore.result === "undercut"}
         The opponent has undercut the knocking player.
       {/if}
