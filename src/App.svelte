@@ -798,7 +798,7 @@
       >
       <button
         class="btn-continue"
-        disabled={playerNumber !== 2}
+        disabled={playerNumber !== 1 && playerNumber !== 2}
         onclick={startNewGame}>New Game</button
       >
     </div>
@@ -845,12 +845,15 @@
       >
     </p>
     <footer>
-      <!-- Seat-gated like the main New Hand button: if both players deal at
-           once, the two deals interleave and mix cards from two decks. -->
       <button
         class="btn-primary"
         disabled={playerNumber !== knockingPlayerNumber}
         onclick={scoreAndNewHand}>New Hand</button
+      >
+      <button
+        class="btn-continue"
+        disabled={playerNumber !== 1 && playerNumber !== 2}
+        onclick={startNewGame}>New Game</button
       >
       <button class="btn-continue" onclick={() => (showKnockModal = false)}
         >Cancel</button
