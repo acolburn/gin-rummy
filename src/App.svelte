@@ -29,8 +29,6 @@
     scoreHand, // works out who wins a hand and how many points
   } from "./EvaluateHand.js";
 
-  // The most recent raw document received from Firestore (undefined = no game yet)
-  let gameSnapshotData = $state();
   // Which seat this browser occupies: 1 (non-dealer), 2 (dealer), or undefined (spectator)
   let playerNumber = $state();
 
@@ -82,10 +80,10 @@
         gameRef,
         async (snapshot) => {
           firebaseError = ""; // listener is alive; clear any earlier error
-          console.log("Firestore snapshot:", snapshot.data());
+          const data = snapshot.data();
+          console.log("Firestore snapshot:", data);
           // The game is "real" only if the document exists AND has a deck
-          if (snapshot.exists() && snapshot.data().deckId) {
-            gameSnapshotData = snapshot.data();
+          if (data?.deckId) {
             // Remember the old value so we can tell below whether a knock just happened
             const previousKnockedByPlayerNumber =
               gameState.knockedByPlayerNumber;
@@ -95,8 +93,8 @@
             // e.g., ["player1Hand", "player2Hand", "discardPile", "deckId",
             // "currentPlayer"]
             Object.keys(gameState).forEach((key) => {
-              if (gameSnapshotData[key] !== undefined) {
-                gameState[key] = gameSnapshotData[key];
+              if (data[key] !== undefined) {
+                gameState[key] = data[key];
               }
             });
 
@@ -104,17 +102,17 @@
             // appears for both players when someone knocks, and hides when
             // it's reset to null).
             if (
-              gameSnapshotData.knockedByPlayerNumber !== undefined &&
-              gameSnapshotData.knockedByPlayerNumber !==
+              data.knockedByPlayerNumber !== undefined &&
+              data.knockedByPlayerNumber !==
                 previousKnockedByPlayerNumber
             ) {
-              showKnockModal = gameSnapshotData.knockedByPlayerNumber !== null;
+              showKnockModal = data.knockedByPlayerNumber !== null;
             }
 
             // Work out which seat (if any) belongs to this browser
-            if (gameSnapshotData.player1 === myId) {
+            if (data.player1 === myId) {
               playerNumber = 1;
-            } else if (gameSnapshotData.player2 === myId) {
+            } else if (data.player2 === myId) {
               playerNumber = 2;
             } else {
               playerNumber = undefined;
@@ -125,7 +123,6 @@
             // should bootstrap the deck, otherwise both browsers create
             // competing decks and the second deckId write clobbers the first.
             console.log("There is no current game.");
-            gameSnapshotData = undefined;
             if (claimBootstrap()) {
               await makeDeck();
             }
@@ -285,7 +282,7 @@
   let layoff = $derived(deadwoodAfterLayoff(knockingHand, opponentHand));
   // Result of the hand: { winner: "knocker"|"opponent", points, result: "gin"|"knock"|"undercut" }
   let handScore = $derived(
-    scoreHand(bestDeadwood(knockingHand), layoff.deadwood),
+    scoreHand(layoff.knockerDeadwood, layoff.deadwood),
   );
   // Which player ("player1"/"player2") wins this hand's points.
   // handScore only says "knocker" or "opponent", so translate that into a player:
@@ -321,32 +318,14 @@
 
   // ---------------------------------------------------------------------------
   // current player can drag and drop cards in their hand
-  function handleDndConsider(event) {
+  function handleDndConsider(handField, event) {
     isDragging = true; //player started dragging a card, so ignore the click event that will fire when they release the card
-    gameState.player1Hand = event.detail.items;
+    gameState[handField] = event.detail.items;
   }
   // ---------------------------------------------------------------------------
-  function handleDndFinalize(event) {
-    gameState.player1Hand = event.detail.items;
-    syncGameState({ player1Hand: gameState.player1Hand });
-
-    setTimeout(() => {
-      isDragging = false; // Brief delay before restting to the click event finishes getting ignored
-    }, 50);
-  }
-
-  // ---------------------------------------------------------------------------
-  // opponent player can drag and drop cards in their hand
-  function handleOpponentDndConsider(event) {
-    isDragging = true; //opponent started dragging a card, so ignore the click event that will fire when they release the card
-    gameState.player2Hand = event.detail.items;
-  }
-
-  // ---------------------------------------------------------------------------
-  function handleOpponentDndFinalize(event) {
-    gameState.player2Hand = event.detail.items;
-    syncGameState({ player2Hand: gameState.player2Hand });
-
+  function handleDndFinalize(handField, event) {
+    gameState[handField] = event.detail.items;
+    syncGameState({ [handField]: gameState[handField] });
     setTimeout(() => {
       isDragging = false; // Brief delay before restting to the click event finishes getting ignored
     }, 50);
@@ -502,81 +481,56 @@
     }
   }
 
+  function getCurrentHandFieldForDraw() {
+    if (!isMyTurn) {
+      return undefined; // Ignore the click event if it's not the player's turn
+    }
+    const handField =
+      gameState.currentPlayer === "player1" ? "player1Hand" : "player2Hand";
+    if (gameState[handField].length > 10) {
+      alert("Your hand is full. Cannot draw more cards.");
+      return undefined;
+    }
+    return handField;
+  }
+
+  async function addCardToCurrentHand(handField, card, extraFields = {}) {
+    gameState[handField] = [...gameState[handField], card];
+    await syncGameState({
+      [handField]: gameState[handField],
+      ...extraFields,
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Click handler for the deck: get a card from the deck and add it to the
   // current player's hand. A hand has 10 cards normally and 11 right after
   // drawing, so more than 10 means you already drew this turn.
   async function addCardToHandFromDeck() {
-    if (!isMyTurn) {
-      return; // Ignore the click event if it's not the player's turn
-    }
-    if (
-      gameState.currentPlayer === "player1" &&
-      gameState.player1Hand.length > 10
-    ) {
-      alert("Your hand is full. Cannot draw more cards.");
-      return;
-    }
-    if (
-      gameState.currentPlayer === "player2" &&
-      gameState.player2Hand.length > 10
-    ) {
-      alert("Your hand is full. Cannot draw more cards.");
-      return;
-    }
+    const handField = getCurrentHandFieldForDraw();
+    if (!handField) return;
     const newCard = await drawCard(); // A card object, or null if the deck is empty
     if (newCard) {
       // [...hand, card] makes a NEW array with the card on the end; assigning a
       // new array (rather than push) is what makes Svelte notice the change
-      if (gameState.currentPlayer === "player1") {
-        gameState.player1Hand = [...gameState.player1Hand, newCard];
-        await syncGameState({ player1Hand: gameState.player1Hand });
-      } else {
-        gameState.player2Hand = [...gameState.player2Hand, newCard];
-        await syncGameState({ player2Hand: gameState.player2Hand });
-      }
+      await addCardToCurrentHand(handField, newCard);
     }
   }
 
   // ---------------------------------------------------------------------------
   // Click handler for the discard pile: take the top (last) card into your hand.
   async function addCardToHandFromDiscardPile() {
-    if (!isMyTurn) {
-      return; // Ignore the click event if it's not the player's turn
-    }
-    if (
-      gameState.currentPlayer === "player1" &&
-      gameState.player1Hand.length > 10
-    ) {
-      alert("Your hand is full. Cannot draw more cards.");
-      return;
-    }
-    if (
-      gameState.currentPlayer === "player2" &&
-      gameState.player2Hand.length > 10
-    ) {
-      alert("Your hand is full. Cannot draw more cards.");
-      return;
-    }
+    const handField = getCurrentHandFieldForDraw();
+    if (!handField) return;
     // Add the top card from the discard pile to the current player's hand
     if (gameState.discardPile.length > 0) {
       const newCard = gameState.discardPile[gameState.discardPile.length - 1];
       // Remove the card from the discard pile
       // (slice(0, -1) copies everything except the last item)
       gameState.discardPile = gameState.discardPile.slice(0, -1);
-      if (gameState.currentPlayer === "player1") {
-        gameState.player1Hand = [...gameState.player1Hand, newCard];
-        await syncGameState({
-          player1Hand: gameState.player1Hand,
-          discardPile: gameState.discardPile,
-        });
-      } else {
-        gameState.player2Hand = [...gameState.player2Hand, newCard];
-        await syncGameState({
-          player2Hand: gameState.player2Hand,
-          discardPile: gameState.discardPile,
-        });
-      }
+      await addCardToCurrentHand(handField, newCard, {
+        discardPile: gameState.discardPile,
+      });
     } else {
       alert("No cards in the discard pile.");
     }
@@ -682,8 +636,8 @@
         flipDurationMs,
         dragDisabled: playerNumber !== 2,
       }}
-      onconsider={handleOpponentDndConsider}
-      onfinalize={handleOpponentDndFinalize}
+      onconsider={(event) => handleDndConsider("player2Hand", event)}
+      onfinalize={(event) => handleDndFinalize("player2Hand", event)}
     >
       <!-- We don't need to know anything about actual cards in opponent's hand; just show card backs. -->
       <!-- Use card, index (index) rather than card.id, so rearranging cards in opponent hand doesn't cause -->
@@ -774,8 +728,8 @@
         flipDurationMs,
         dragDisabled: playerNumber !== 1,
       }}
-      onconsider={handleDndConsider}
-      onfinalize={handleDndFinalize}
+      onconsider={(event) => handleDndConsider("player1Hand", event)}
+      onfinalize={(event) => handleDndFinalize("player1Hand", event)}
     >
       <!-- We don't need to know anything about actual cards in opponent's hand; just show card backs. -->
       <!-- Use card, index (index) rather than card.id, so rearranging cards in opponent hand doesn't cause -->
@@ -819,9 +773,9 @@
     <header>
       <p>
         <strong
-          >{bestDeadwood(knockingHand) === 0
+          >{layoff.knockerDeadwood === 0
             ? "Gin!"
-            : `Knock for ${bestDeadwood(knockingHand)} points`}</strong
+            : `Knock for ${layoff.knockerDeadwood} points`}</strong
         >
       </p>
     </header>
@@ -832,7 +786,7 @@
         {layoff.laidOff.length === 1 ? "card" : "cards"}.
       {/if}
       Opponent has {layoff.deadwood} points in their hand. That's a difference of
-      {layoff.deadwood - bestDeadwood(knockingHand)} points.
+      {layoff.deadwood - layoff.knockerDeadwood} points.
       {#if handScore.result === "undercut"}
         The opponent has undercut the knocking player.
       {/if}

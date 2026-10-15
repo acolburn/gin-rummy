@@ -39,6 +39,22 @@ function deadwoodValue(card) {
   return Math.min(rankOf(card), 10);
 }
 
+function groupCardsBy(hand, getKey) {
+  const groups = new Map();
+  // go through each card in hand
+  for (const card of hand) {
+    // get the card's grouping key
+    const key = getKey(card);
+    // if the key is not in the map, add it with an empty array
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    // add the card to the array for its key
+    groups.get(key).push(card);
+  } // end loop
+  return groups;
+}
+
 // Finds EVERY possible meld in a hand (including overlapping ones, e.g. both
 // 3H-4H-5H and 4H-5H-6H). Choosing which ones to actually use happens later,
 // in bestArrangement. Returns an array of melds; each meld is an array of cards.
@@ -51,18 +67,7 @@ function findMelds(hand) {
   // We'll make a map with all the 2's, 3's, etc.
   // Key will be a rank (e.g., 2), value will be an array with cards of that rank (e.g. 2H, 2D, 2S)
   // Any arrays with 3 or 4 cards are melds.
-  const cardsByRank = new Map();
-  // go through each card in hand
-  for (const card of hand) {
-    // get the card's rank
-    const rank = rankOf(card);
-    // if the rank is not in the map, add it with an empty array
-    if (!cardsByRank.has(rank)) {
-      cardsByRank.set(rank, []);
-    }
-    // add the card to the array for that rank
-    cardsByRank.get(rank).push(card);
-  } // end loop
+  const cardsByRank = groupCardsBy(hand, rankOf);
 
   // Now go through the map and find array with 3-4 cards of same rank
   // .values() gives us the arrays
@@ -86,15 +91,8 @@ function findMelds(hand) {
   }
 
   // Now let's find the runs
-  const cardsBySuit = new Map();
+  const cardsBySuit = groupCardsBy(hand, suitOf);
   // follow same logic as above to group by suit
-  for (const card of hand) {
-    const suit = suitOf(card);
-    if (!cardsBySuit.has(suit)) {
-      cardsBySuit.set(suit, []);
-    }
-    cardsBySuit.get(suit).push(card);
-  }
   // loop over suit groups
   // cards is array of cards of the same suit, e.g., ["3H", "5H", "4H"]
   for (const cards of cardsBySuit.values()) {
@@ -257,7 +255,7 @@ export function deadwoodAfterLayoff(knockerHand, opponentHand) {
 
   // reduce adds up the point value of every card still left over
   const deadwood = remaining.reduce((t, card) => t + deadwoodValue(card), 0);
-  return { deadwood, laidOff, remaining };
+  return { knockerDeadwood: knocker.deadwood, deadwood, laidOff, remaining };
 }
 
 // Bonus points awarded for going gin (0 deadwood) or for undercutting a knock
