@@ -298,12 +298,12 @@
         : "player1",
   );
 
-  // Open/close the knock modal when showKnockModal changes
-  // (showModal()/close() are built-in methods of the HTML <dialog> element.)
+  // Open/close the knock dialog when showKnockModal changes. show() keeps the
+  // dialog non-modal so the shared New Game control remains available.
   $effect(() => {
     if (knockModalRef) {
       if (showKnockModal) {
-        knockModalRef.showModal();
+        knockModalRef.show();
       } else {
         knockModalRef.close();
       }
@@ -659,6 +659,11 @@
     <p class="status">
       P1: {gameState.player1Score} &nbsp; P2: {gameState.player2Score}
     </p>
+    <button
+      class="btn-continue"
+      disabled={playerNumber !== 1 && playerNumber !== 2}
+      onclick={startNewGame}>New Game</button
+    >
     <div class="seat-buttons">
       <button class="btn-continue" onclick={() => claimSeat(1)}
         >Non-Dealer</button
@@ -789,17 +794,11 @@
     <span class="hand-label">Player 1</span>
 
     <!-- Display new hand button -->
-    <!-- Only Dealer can shuffle and deal a new hand -->
     <div class="controls">
       <button
         class="btn-primary"
         disabled={playerNumber !== 2}
         onclick={startNewHand}>New Hand</button
-      >
-      <button
-        class="btn-continue"
-        disabled={playerNumber !== 1 && playerNumber !== 2}
-        onclick={startNewGame}>New Game</button
       >
     </div>
     <!-- End Display hand controls -->
@@ -850,11 +849,6 @@
         disabled={playerNumber !== knockingPlayerNumber}
         onclick={scoreAndNewHand}>New Hand</button
       >
-      <button
-        class="btn-continue"
-        disabled={playerNumber !== 1 && playerNumber !== 2}
-        onclick={startNewGame}>New Game</button
-      >
       <button class="btn-continue" onclick={() => (showKnockModal = false)}
         >Cancel</button
       >
@@ -900,6 +894,8 @@
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 0.5rem;
+    position: relative;
+    z-index: 1;
   }
 
   .topbar h1 {
@@ -1062,12 +1058,10 @@
     border: none;
     border-radius: 16px;
     padding: 0;
+    position: fixed;
     max-width: min(90vw, 380px);
+    z-index: 0;
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-  }
-
-  .knock-modal::backdrop {
-    background: rgba(0, 0, 0, 0.55);
   }
 
   .knock-modal article {
