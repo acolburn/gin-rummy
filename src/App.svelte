@@ -31,6 +31,7 @@
 
   // Which seat this browser occupies: 1 (non-dealer), 2 (dealer), or undefined (spectator)
   let playerNumber = $state();
+  let isDrawing = false;
 
   // ---------------------------------------------------------------------------
   // Identify this browser with a simple random id stored locally, instead of
@@ -367,13 +368,13 @@
     // Fetch a new shuffled deck from the API
     const response = await fetch(
       "https://deckofcardsapi.com/api/deck/new/shuffle/",
-      // "https://deckofcardsapi.com/api/deck/new/",
     );
     const data = await response.json(); // response body (text) -> JavaScript object
-    gameState.deckId = data.deck_id; // the API gives us an id we use for later draws
     if (sync) {
-      await syncGameState({ deckId: gameState.deckId }); // Sync the new deckId with Firestore
+      gameState.deckId = data.deck_id;
+      await syncGameState({ deckId: data.deck_id }); // Sync the new deckId with Firestore
     }
+    return data.deck_id;
   }
 
   // ---------------------------------------------------------------------------
@@ -397,35 +398,26 @@
     // MUST be awaited: otherwise the draws below use the OLD deckId while the
     // NEW deckId gets synced to Firestore, so future draws come from a full
     // 52-card deck and can duplicate cards already in hands/discard pile.
-    await makeDeck(false); // New deck in case old one is >2 wks old; deckId synced with the hands below
-    gameState.player1Hand = [];
-    gameState.player2Hand = [];
-    gameState.discardPile = [];
+    // The new deck id is kept in a local variable (NOT gameState.deckId): a
+    // Firestore snapshot arriving mid-deal overwrites gameState, which would
+    // switch the later draws back to the old deck and deal duplicate cards.
+    const newDeckId = await makeDeck(false);
+    // Draw all 21 cards (10 + 10 + 1 discard) in one request so the deal is atomic.
+    const dealResponse = await fetch(
+      `https://deckofcardsapi.com/api/deck/${newDeckId}/draw/?count=21`,
+    );
+    const dealData = await dealResponse.json();
+    if (!dealData.success || dealData.cards.length < 21) {
+      alert("Could not deal a new hand. Please try again.");
+      return;
+    }
+    const dealt = dealData.cards.map((card) => toHandCard(card));
+    gameState.deckId = newDeckId;
+    gameState.player1Hand = dealt.slice(0, 10);
+    gameState.player2Hand = dealt.slice(10, 20);
+    gameState.discardPile = dealt.slice(20);
     gameState.canKnock = false;
     gameState.knockedByPlayerNumber = null;
-
-    // Draw 10 cards from deck, assign to playerHand
-    const drawResponse = await fetch(
-      `https://deckofcardsapi.com/api/deck/${gameState.deckId}/draw/?count=10`,
-    );
-    // Parse the response and update playerHand with the drawn cards
-    const drawData = await drawResponse.json();
-    // map runs toHandCard on each API card, producing our own card objects
-    gameState.player1Hand = drawData.cards.map((card) => toHandCard(card));
-    // Repeat for opponentHand
-    const opponentDrawResponse = await fetch(
-      `https://deckofcardsapi.com/api/deck/${gameState.deckId}/draw/?count=10`,
-    );
-    const opponentDrawData = await opponentDrawResponse.json();
-    gameState.player2Hand = opponentDrawData.cards.map((card) =>
-      toHandCard(card),
-    );
-    // Add one card to the discard pile
-    const discardResponse = await fetch(
-      `https://deckofcardsapi.com/api/deck/${gameState.deckId}/draw/?count=1`,
-    );
-    const discardData = await discardResponse.json();
-    gameState.discardPile = discardData.cards.map((card) => toHandCard(card));
     if (resetScores) {
       gameState.player1Score = 0;
       gameState.player2Score = 0;
@@ -469,16 +461,27 @@
   // Asks the API for one card from the deck. Returns our card object, or null
   // (after an alert) if the deck is empty. Does NOT change any hand itself.
   async function drawCard() {
-    const drawResponse = await fetch(
-      `https://deckofcardsapi.com/api/deck/${gameState.deckId}/draw/?count=1`,
+    const inPlay = new Set(
+      [
+        ...gameState.player1Hand,
+        ...gameState.player2Hand,
+        ...gameState.discardPile,
+      ].map((c) => c.id),
     );
-    const drawData = await drawResponse.json();
-    if (drawData.cards.length > 0) {
-      return toHandCard(drawData.cards[0]);
-    } else {
-      alert("No more cards in the deck.");
-      return null;
+    // Retry a few times in case the API hands back a card already in play
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const drawResponse = await fetch(
+        `https://deckofcardsapi.com/api/deck/${gameState.deckId}/draw/?count=1`,
+      );
+      const drawData = await drawResponse.json();
+      if (!drawData.cards || drawData.cards.length === 0) {
+        alert("No more cards in the deck.");
+        return null;
+      }
+      const card = toHandCard(drawData.cards[0]);
+      if (!inPlay.has(card.id)) return card;
     }
+    return null;
   }
 
   function getCurrentHandFieldForDraw() {
@@ -507,10 +510,17 @@
   // current player's hand. A hand has 10 cards normally and 11 right after
   // drawing, so more than 10 means you already drew this turn.
   async function addCardToHandFromDeck() {
+    if (isDrawing) return; // ignore double clicks while a draw is in flight
     const handField = getCurrentHandFieldForDraw();
     if (!handField) return;
-    const newCard = await drawCard(); // A card object, or null if the deck is empty
-    if (newCard) {
+    isDrawing = true;
+    let newCard;
+    try {
+      newCard = await drawCard(); // A card object, or null if the deck is empty
+    } finally {
+      isDrawing = false;
+    }
+    if (newCard && gameState[handField].length <= 10) {
       // [...hand, card] makes a NEW array with the card on the end; assigning a
       // new array (rather than push) is what makes Svelte notice the change
       await addCardToCurrentHand(handField, newCard);
