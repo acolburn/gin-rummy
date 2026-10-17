@@ -376,6 +376,16 @@
     });
   }
 
+  // Retracts a knock (dialog Cancel): hides both hands again and leaves the
+  // turn with the knocker, who still sees the Knock / Continue buttons.
+  async function cancelKnock() {
+    showKnockModal = false;
+    gameState.knockedByPlayerNumber = null;
+    await syncGameState({
+      knockedByPlayerNumber: gameState.knockedByPlayerNumber,
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Creates a fresh shuffled deck. When sync is false, the caller is
   // responsible for syncing deckId (newHand does this atomically together
@@ -823,7 +833,7 @@
         disabled={playerNumber !== knockingPlayerNumber}
         onclick={scoreAndNewHand}>New Hand</button
       >
-      <button class="btn-continue" onclick={() => (showKnockModal = false)}
+      <button class="btn-continue" onclick={cancelKnock}
         >Cancel</button
       >
     </footer>
