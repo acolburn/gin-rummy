@@ -269,6 +269,8 @@
   // --- Knock popup (modal) and end-of-hand scoring ---
   let showKnockModal = $state(false); // is the popup open?
   let knockModalRef; // points at the <dialog> element (set via bind:this in the markup)
+  // After a knock/gin both hands are face up; cleared when a new hand is dealt
+  let handsRevealed = $derived(gameState.knockedByPlayerNumber !== null);
   // The player who discarded (the current player) is the one knocking
   let knockingPlayerNumber = $derived(
     gameState.currentPlayer === "player1" ? 1 : 2,
@@ -672,7 +674,7 @@
       {#each gameState.player2Hand as card, index (playerNumber === 2 ? player2Keys[index] : index)}
         <div animate:flip={{ duration: flipDurationMs }}>
           <Card
-            code={playerNumber === 2 ? card.code : "BK"}
+            code={playerNumber === 2 || handsRevealed ? card.code : "BK"}
             onCardClick={playerNumber === 2
               ? () => discardCard(card)
               : doNothing}
@@ -764,7 +766,7 @@
       {#each gameState.player1Hand as card, index (playerNumber === 1 ? player1Keys[index] : index)}
         <div animate:flip={{ duration: flipDurationMs }}>
           <Card
-            code={playerNumber === 1 ? card.code : "BK"}
+            code={playerNumber === 1 || handsRevealed ? card.code : "BK"}
             onCardClick={playerNumber === 1
               ? () => discardCard(card)
               : doNothing}
