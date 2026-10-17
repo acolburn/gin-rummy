@@ -1067,9 +1067,18 @@
 
   .knock-modal footer {
     display: flex;
-    gap: 0.6rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
     justify-content: flex-end;
-    margin-top: 1.25rem;
+    margin: 1rem 0 0;
+    padding: 0;
+  }
+
+  .knock-modal footer button {
+    width: auto;
+    margin: 0;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.8rem;
   }
 
   @media (min-width: 900px) {
