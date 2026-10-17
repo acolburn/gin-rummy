@@ -1034,14 +1034,21 @@
     border: none;
     border-radius: 16px;
     padding: 0;
+    /* Pico CSS makes <dialog> a full-screen dark, blurred overlay; undo that */
+    width: auto;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    background: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
     /* Sits in the strip between the two hands, to the right of the piles */
     position: absolute;
-    top: 50%;
-    left: auto;
-    right: clamp(0.5rem, 3vw, 2rem);
+    inset: 50% clamp(0.5rem, 3vw, 2rem) auto auto;
+    margin: 0;
     transform: translateY(-50%);
     max-width: min(45vw, 300px);
-    z-index: 0;
+    z-index: 1;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   }
 
