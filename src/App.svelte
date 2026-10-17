@@ -109,8 +109,7 @@
             // it's reset to null).
             if (
               data.knockedByPlayerNumber !== undefined &&
-              data.knockedByPlayerNumber !==
-                previousKnockedByPlayerNumber
+              data.knockedByPlayerNumber !== previousKnockedByPlayerNumber
             ) {
               showKnockModal = data.knockedByPlayerNumber !== null;
             }
@@ -289,9 +288,7 @@
   // Opponent's deadwood after laying off cards onto the knocker's melds
   let layoff = $derived(deadwoodAfterLayoff(knockingHand, opponentHand));
   // Result of the hand: { winner: "knocker"|"opponent", points, result: "gin"|"knock"|"undercut" }
-  let handScore = $derived(
-    scoreHand(layoff.knockerDeadwood, layoff.deadwood),
-  );
+  let handScore = $derived(scoreHand(layoff.knockerDeadwood, layoff.deadwood));
   // Which player ("player1"/"player2") wins this hand's points.
   // handScore only says "knocker" or "opponent", so translate that into a player:
   // the knocker is currentPlayer; the opponent is the other one.
@@ -808,7 +805,6 @@
         >
       </p>
     </header>
-    <p>Well done!</p>
     <p>
       {#if layoff.laidOff.length > 0}
         Opponent laid off {layoff.laidOff.length}

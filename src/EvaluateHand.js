@@ -259,8 +259,8 @@ export function deadwoodAfterLayoff(knockerHand, opponentHand) {
 }
 
 // Bonus points awarded for going gin (0 deadwood) or for undercutting a knock
-const GIN_BONUS = 25;
-const UNDERCUT_BONUS = 25;
+const GIN_BONUS = 20;
+const UNDERCUT_BONUS = 20;
 
 // Scores a finished hand. Both arguments are deadwood point totals; the
 // opponent's should already have lay-offs applied.
