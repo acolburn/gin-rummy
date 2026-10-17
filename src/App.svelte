@@ -784,11 +784,6 @@
     <!-- End Display hand controls -->
   </section>
   <!-- End Display player hand -->
-</div>
-
-<!-- ---------------------------------------------------------------------------- -->
-<!-- Knock/Gin modal -->
-<!-- ---------------------------------------------------------------------------- -->
 
 <dialog
   class="knock-modal"
@@ -834,6 +829,7 @@
     </footer>
   </article>
 </dialog>
+</div>
 
 <style>
   :global(html, body) {
@@ -851,6 +847,7 @@
   }
 
   .table {
+    position: relative;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -1037,15 +1034,21 @@
     border: none;
     border-radius: 16px;
     padding: 0;
-    position: fixed;
-    max-width: min(90vw, 380px);
+    /* Sits in the strip between the two hands, to the right of the piles */
+    position: absolute;
+    top: 50%;
+    left: auto;
+    right: clamp(0.5rem, 3vw, 2rem);
+    transform: translateY(-50%);
+    max-width: min(45vw, 300px);
     z-index: 0;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   }
 
   .knock-modal article {
     margin: 0;
-    padding: 1.25rem 1.5rem;
+    font-size: 0.85rem;
+    padding: 0.75rem 1rem;
     background: #fffaf0;
     color: #2b2b2b;
     border-radius: 16px;
