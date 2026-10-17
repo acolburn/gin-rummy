@@ -18,6 +18,6 @@
   },
   "dependencies": {
     "firebase": "^12.18.0",
-    "svelte-dnd-action": "^0.9.79"
+    "svelte-dnd-action": "0.9.79"
   }
 }
