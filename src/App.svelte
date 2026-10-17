@@ -94,7 +94,12 @@
             // e.g., ["player1Hand", "player2Hand", "discardPile", "deckId",
             // "currentPlayer"]
             Object.keys(gameState).forEach((key) => {
-              if (data[key] !== undefined) {
+              if (data[key] === undefined) return;
+              if (key === "player1Hand" || key === "player2Hand") {
+                // Don't clobber a hand mid-drag (it holds dnd's shadow copy)
+                if (isDragging) return;
+                gameState[key] = uniqueCards(data[key]);
+              } else {
                 gameState[key] = data[key];
               }
             });
@@ -319,13 +324,25 @@
 
   // ---------------------------------------------------------------------------
   // current player can drag and drop cards in their hand
+  // Drops duplicate ids and svelte-dnd-action's temporary shadow placeholder
+  // (which shares the dragged card's id) so a hand never shows a card twice.
+  function uniqueCards(cards, keepShadow = false) {
+    const seen = new Set();
+    return cards.filter((c) => {
+      if (!keepShadow && c.isDndShadowItem) return false;
+      if (seen.has(c.id)) return false;
+      seen.add(c.id);
+      return true;
+    });
+  }
+
   function handleDndConsider(handField, event) {
     isDragging = true; //player started dragging a card, so ignore the click event that will fire when they release the card
     gameState[handField] = event.detail.items;
   }
   // ---------------------------------------------------------------------------
   function handleDndFinalize(handField, event) {
-    gameState[handField] = event.detail.items;
+    gameState[handField] = uniqueCards(event.detail.items);
     syncGameState({ [handField]: gameState[handField] });
     setTimeout(() => {
       isDragging = false; // Brief delay before restting to the click event finishes getting ignored
@@ -498,7 +515,7 @@
   }
 
   async function addCardToCurrentHand(handField, card, extraFields = {}) {
-    gameState[handField] = [...gameState[handField], card];
+    gameState[handField] = uniqueCards([...gameState[handField], card]);
     await syncGameState({
       [handField]: gameState[handField],
       ...extraFields,
