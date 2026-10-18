@@ -644,7 +644,7 @@
     </p>
     <button
       class="btn-continue"
-      disabled={playerNumber !== 1 && playerNumber !== 2}
+      // disabled={playerNumber !== 1 && playerNumber !== 2}
       onclick={startNewGame}>New Game</button
     >
     <div class="seat-buttons">
@@ -778,50 +778,49 @@
   </section>
   <!-- End Display player hand -->
 
-<dialog
-  class="knock-modal"
-  bind:this={knockModalRef}
-  onclose={() => (showKnockModal = false)}
->
-  <article>
-    <header>
+  <dialog
+    class="knock-modal"
+    bind:this={knockModalRef}
+    onclose={() => (showKnockModal = false)}
+  >
+    <article>
+      <header>
+        <p>
+          <strong
+            >{layoff.knockerDeadwood === 0
+              ? "Gin!"
+              : `Knock for ${layoff.knockerDeadwood} points`}</strong
+          >
+        </p>
+      </header>
+      <p>
+        {#if layoff.laidOff.length > 0}
+          Opponent laid off {layoff.laidOff.length}
+          {layoff.laidOff.length === 1 ? "card" : "cards"}.
+        {/if}
+        Opponent has {layoff.deadwood} points in their hand. That's a difference
+        of
+        {layoff.deadwood - layoff.knockerDeadwood} points.
+        {#if handScore.result === "undercut"}
+          The opponent has undercut the knocking player.
+        {/if}
+      </p>
       <p>
         <strong
-          >{layoff.knockerDeadwood === 0
-            ? "Gin!"
-            : `Knock for ${layoff.knockerDeadwood} points`}</strong
+          >{handWinner === "player1" ? "Player 1" : "Player 2"} scores {handScore.points}
+          points.</strong
         >
       </p>
-    </header>
-    <p>
-      {#if layoff.laidOff.length > 0}
-        Opponent laid off {layoff.laidOff.length}
-        {layoff.laidOff.length === 1 ? "card" : "cards"}.
-      {/if}
-      Opponent has {layoff.deadwood} points in their hand. That's a difference of
-      {layoff.deadwood - layoff.knockerDeadwood} points.
-      {#if handScore.result === "undercut"}
-        The opponent has undercut the knocking player.
-      {/if}
-    </p>
-    <p>
-      <strong
-        >{handWinner === "player1" ? "Player 1" : "Player 2"} scores {handScore.points}
-        points.</strong
-      >
-    </p>
-    <footer>
-      <button
-        class="btn-primary"
-        disabled={playerNumber !== knockingPlayerNumber}
-        onclick={scoreAndNewHand}>New Hand</button
-      >
-      <button class="btn-continue" onclick={cancelKnock}
-        >Cancel</button
-      >
-    </footer>
-  </article>
-</dialog>
+      <footer>
+        <button
+          class="btn-primary"
+          disabled={playerNumber !== knockingPlayerNumber}
+          onclick={scoreAndNewHand}>New Hand</button
+        >
+        <button class="btn-continue" onclick={cancelKnock}>Cancel</button>
+      </footer>
+    </article>
+  </dialog>
 </div>
 
 <style>
