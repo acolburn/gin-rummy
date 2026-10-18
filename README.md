@@ -21,8 +21,6 @@ configured for multiplayer syncing.
 
 - Choose **Non-Dealer** (Player 1) or **Dealer** (Player 2) to take a seat. Seats
   can be reassigned by anyone; this is a casual shared game, not an account system.
-- **New Hand** deals a fresh hand and keeps the scores. Either seated player can
-  start it; Player 1 starts the hand.
 - **New Game** deals a fresh hand, resets both scores, and has Player 1 start.
 - Draw from the deck or the top of the discard pile, then discard one card.
   A player with 10 or fewer deadwood points after discarding can knock or continue.
@@ -222,9 +220,9 @@ synced atomically with the new cards.
    other player.
 3. **Always `await makeDeck()` before drawing** — see above.
 4. **`deckId`, hands, and discard pile are one atomic unit** — sync them together.
-5. **Only seated players can deal a hand.** Either seated player can start an
-   ordinary New Hand or New Game; only the player who knocked can score the result
-   and start the next hand from the knock dialog.
+5. **Only seated players can deal a hand.** Either seated player can start a
+   New Game; only the player who knocked can score the result and start the next
+   hand from the knock dialog.
 6. **Don't reset `canKnock` at call sites** — `switchPlayer()` owns that.
 7. **Firestore values must be plain JSON** — no class instances, functions, or Dates in
    `gameState`.

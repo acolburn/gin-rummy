@@ -154,7 +154,7 @@
   // the seat -- clicking always (re)assigns it.
   // Uses setDoc + merge, NOT updateDoc: on a fresh database the game doc may
   // not exist yet, and updateDoc throws in that case, silently leaving the
-  // player seat-less (which disables New Hand and ignores all taps).
+  // player seat-less, preventing gameplay actions.
   async function claimSeat(seatNumber) {
     // Ternary: condition ? valueIfTrue : valueIfFalse
     const field = seatNumber === 1 ? "player1" : "player2";
@@ -247,9 +247,8 @@
   // card id is unique, so the key is just the id (which lets Svelte animate
   // reorders instead of remounting cards). But if Firestore data ever gets
   // corrupted with a duplicate card, a duplicate key makes Svelte THROW
-  // mid-render (dev mode), freezing the whole UI -- including the "New Hand"
-  // button you'd need to fix the data. Appending an occurrence counter keeps
-  // keys unique so one bad document can never brick the app.
+  // mid-render (dev mode), freezing the whole UI. Appending an occurrence
+  // counter keeps keys unique so one bad document can never brick the app.
   /** @param {any[]} hand */
   function uniqueKeys(hand) {
     // `seen` is a Map (key -> value) counting how many times each card id appeared
@@ -405,7 +404,7 @@
 
   // ---------------------------------------------------------------------------
   // Adds this hand's points to the winner's total, then deals a new hand.
-  // Only called from the knock modal, so ordinary New Hand clicks don't score.
+  // Only called from the knock modal to score and start the next hand.
   async function scoreAndNewHand() {
     // Pick which score field to update; gameState[scoreField] looks up a
     // property by a name stored in a variable
@@ -462,12 +461,6 @@
       currentPlayer: gameState.currentPlayer,
       ...(resetScores ? { player1Score: 0, player2Score: 0 } : {}),
     });
-  }
-
-  // ---------------------------------------------------------------------------
-  // Starts an ordinary new hand with player 1 going first; scores are kept.
-  async function startNewHand() {
-    await dealHand({ resetScores: false, startingPlayer: "player1" });
   }
 
   // ---------------------------------------------------------------------------
@@ -782,16 +775,6 @@
       {/each}
     </div>
     <span class="hand-label">Player 1</span>
-
-    <!-- Display new hand button -->
-    <div class="controls">
-      <button
-        class="btn-primary"
-        disabled={playerNumber !== 1 && playerNumber !== 2}
-        onclick={startNewHand}>New Hand</button
-      >
-    </div>
-    <!-- End Display hand controls -->
   </section>
   <!-- End Display player hand -->
 
@@ -987,12 +970,6 @@
     aspect-ratio: 0.7;
     border: 2px dashed rgba(245, 240, 230, 0.4);
     border-radius: 8%;
-  }
-
-  .controls {
-    display: flex;
-    gap: 0.6rem;
-    margin-top: 0.15rem;
   }
 
   button {
