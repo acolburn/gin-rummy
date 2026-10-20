@@ -921,12 +921,19 @@
   .hand {
     display: flex;
     justify-content: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 0.5rem;
     width: 100%;
+    box-sizing: border-box;
     min-height: clamp(60px, 11vw, 120px);
     padding: 0.5rem;
     border-radius: 12px;
+  }
+
+  /* let cards shrink so 11 always fit on one row */
+  .hand :global(.card-button) {
+    flex: 0 1 auto;
+    min-width: 0;
   }
 
   .action-row {
@@ -1080,6 +1087,14 @@
 
     .pile-group {
       gap: 1.25rem;
+    }
+
+    /* Two rows: 11 cards wrap (6 + 5) at full size; reserve both rows so layout doesn't shift */
+    .hand {
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      align-content: flex-start;
+      min-height: calc(2 * 48px * 1.45 + 0.25rem + 1rem);
     }
   }
 </style>
